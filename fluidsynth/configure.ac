@@ -226,6 +226,27 @@ if test "x${enable_aufile_support}" != "xno"; then
 fi
 
 
+dnl
+dnl - Check support for OpenSLES
+dnl
+AC_CHECK_HEADER(SLES/OpenSLES_Android.h, OPENSLES_FOUND="yes",
+                OPENSLES_FOUND="no")
+AC_ARG_ENABLE(opensles, AS_HELP_STRING([--disable-opensles],
+	[disable OpenSLES support (default=auto)]),
+  enable_opensles=$enableval, enable_opensles="yes")
+
+OPENSLES_SUPPORT=0
+if test "$enable_opensles" = "yes" -a "$OPENSLES_FOUND" = "yes"; then
+  AC_DEFINE(OPENSLES_SUPPORT, 1, [whether or not we are supporting OpenSLES])
+  OPENSLES_SUPPORT=1
+  OPENSLES_LIBS="-lOpenSLES"
+fi
+
+AM_CONDITIONAL(OPENSLES_SUPPORT, test "$OPENSLES_SUPPORT" = "1")
+AC_SUBST(OPENSLES_LIBS)
+
+
+
 dnl - Check for PulseAudio support
 
 AC_ARG_ENABLE(pulse-support, AS_HELP_STRING([--disable-pulse-support],
@@ -517,6 +538,12 @@ if test "${DBUS_SUPPORT}" = "1"; then
   echo "D-Bus:                 yes"
 else 
   echo "D-Bus:                 no"
+fi
+
+if test "${OPENSLES_SUPPORT}" = "1"; then
+  echo "OpenSLES:              yes"
+else 
+  echo "OpenSLES:              no"
 fi
 
 if test "${PULSE_SUPPORT}" = "1"; then

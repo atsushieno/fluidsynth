@@ -37,6 +37,15 @@ typedef struct _fluid_audriver_definition_t
 } fluid_audriver_definition_t;
 
 
+#if OPENSLES_SUPPORT
+fluid_audio_driver_t* new_fluid_opensles_audio_driver(fluid_settings_t* settings,
+						   fluid_synth_t* synth);
+fluid_audio_driver_t* new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
+						    fluid_audio_func_t func, void* data);
+int delete_fluid_opensles_audio_driver(fluid_audio_driver_t* p);
+void fluid_opensles_audio_driver_settings(fluid_settings_t* settings);
+#endif
+
 #if PULSE_SUPPORT
 fluid_audio_driver_t* new_fluid_pulse_audio_driver(fluid_settings_t* settings,
 						   fluid_synth_t* synth);
@@ -141,6 +150,13 @@ fluid_audriver_definition_t fluid_audio_drivers[] = {
     delete_fluid_oss_audio_driver,
     fluid_oss_audio_driver_settings },
 #endif
+#if OPENSLES_SUPPORT
+  { "opensles",
+    new_fluid_opensles_audio_driver,
+    new_fluid_opensles_audio_driver2,
+    delete_fluid_opensles_audio_driver,
+    fluid_opensles_audio_driver_settings },
+#endif
 #if PULSE_SUPPORT
   { "pulseaudio",
     new_fluid_pulse_audio_driver,
@@ -227,6 +243,8 @@ void fluid_audio_driver_settings(fluid_settings_t* settings)
   fluid_settings_register_str(settings, "audio.driver", "jack", 0, NULL, NULL);
 #elif ALSA_SUPPORT
   fluid_settings_register_str(settings, "audio.driver", "alsa", 0, NULL, NULL);
+#elif OPENSLES_SUPPORT
+  fluid_settings_register_str(settings, "audio.driver", "opensles", 0, NULL, NULL);
 #elif PULSE_SUPPORT
   fluid_settings_register_str(settings, "audio.driver", "pulseaudio", 0, NULL, NULL);
 #elif OSS_SUPPORT
@@ -248,6 +266,9 @@ void fluid_audio_driver_settings(fluid_settings_t* settings)
 #endif
 
   /* Add all drivers to the list of options */
+#if OPENSLES_SUPPORT
+  fluid_settings_add_option(settings, "audio.driver", "opensles");
+#endif
 #if PULSE_SUPPORT
   fluid_settings_add_option(settings, "audio.driver", "pulseaudio");
 #endif
