@@ -156,7 +156,7 @@ fluid_default_log_function(int level, char* message, void* data)
   switch (level) {
   case FLUID_PANIC:
 #ifdef ANDROID
-    android_log_write(ANDROID_LOG_WTF, fluid_libname, message);
+    android_log_write(ANDROID_LOG_FATAL, fluid_libname, message);
 #else
     FLUID_FPRINTF(out, "%s: panic: %s\n", fluid_libname, message);
 #endif
