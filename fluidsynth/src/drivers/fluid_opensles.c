@@ -150,16 +150,23 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   result = (*dev->engine)->GetInterface (dev->engine, SL_IID_ENGINE, &engine_interface);
   if (result != 0) goto error_recovery;
 
+  result = (*engine_interface)->CreateOutputMix (engine_interface, &dev->output_mix_object, 0, 0, 0);
+  if (result != 0) goto error_recovery;
+  
+  result = (*dev->output_mix_object)->Realize (dev->output_mix_object, SL_BOOLEAN_FALSE);
+  if (result != 0) goto error_recovery;
+
   SLDataLocator_AndroidSimpleBufferQueue loc_buffer_queue = {
     SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE,
     2
     };
+    /* TODO: verify sampling rate. Since it accepts only some values as valid ones, I ignored sample_rate and specified this directly. */
   SLDataFormat_PCM format_pcm = {
     SL_DATAFORMAT_PCM,
     2, /* numChannels */
-    sample_rate,
-    SL_PCMSAMPLEFORMAT_FIXED_32,
-    SL_PCMSAMPLEFORMAT_FIXED_32,
+    SL_SAMPLINGRATE_44_1,
+    SL_PCMSAMPLEFORMAT_FIXED_16,
+    SL_PCMSAMPLEFORMAT_FIXED_16,
     0, /* channelMask */
     SL_BYTEORDER_LITTLEENDIAN
     };
