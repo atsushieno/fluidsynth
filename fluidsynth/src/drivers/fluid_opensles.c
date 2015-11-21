@@ -132,7 +132,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   dev->buffer_size = period_size;
   dev->sample_rate = sample_rate;
 
-  period_bytes = period_size * sizeof (float) * 2;
+  period_bytes = period_size * sizeof (short) * 2;
   ////bufattr.maxlength = adjust_latency ? -1 : period_bytes;
   ////bufattr.tlength = period_bytes;
   ////bufattr.minreq = -1;
@@ -254,14 +254,14 @@ static void
 fluid_opensles_audio_run(void* d)
 {
   fluid_opensles_audio_driver_t* dev = (fluid_opensles_audio_driver_t*) d;
-  float *buf;
+  short *buf;
   int buffer_size;
   int err;
 
   buffer_size = dev->buffer_size;
 
   /* FIXME - Probably shouldn't alloc in run() */
-  buf = FLUID_ARRAY(float, buffer_size * 2);
+  buf = FLUID_ARRAY(short, buffer_size * 2);
 
   if (buf == NULL)
   {
@@ -271,10 +271,10 @@ fluid_opensles_audio_run(void* d)
 
   while (dev->cont)
   {
-    fluid_synth_write_float(dev->data, buffer_size, buf, 0, 2, buf, 1, 2);
+    fluid_synth_write_s16(dev->data, buffer_size, buf, 0, 2, buf, 1, 2);
 
     SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
-      dev->player_buffer_queue_interface, buf, buffer_size * sizeof (float) * 2);
+      dev->player_buffer_queue_interface, buf, buffer_size * sizeof (short) * 2);
     // FIXME: this should be removed.
     usleep (1000000 * buffer_size / dev->sample_rate);
     if (result != 0) {
@@ -291,8 +291,8 @@ fluid_opensles_audio_run2(void* d)
 {
   fluid_opensles_audio_driver_t* dev = (fluid_opensles_audio_driver_t*) d;
   fluid_synth_t *synth = (fluid_synth_t *)(dev->data);
-  float *left, *right, *buf;
-  float* handle[2];
+  short *left, *right, *buf;
+  short* handle[2];
   int buffer_size;
   int err;
   int i;
@@ -300,9 +300,9 @@ fluid_opensles_audio_run2(void* d)
   buffer_size = dev->buffer_size;
 
   /* FIXME - Probably shouldn't alloc in run() */
-  left = FLUID_ARRAY(float, buffer_size);
-  right = FLUID_ARRAY(float, buffer_size);
-  buf = FLUID_ARRAY(float, buffer_size * 2);
+  left = FLUID_ARRAY(short, buffer_size);
+  right = FLUID_ARRAY(short, buffer_size);
+  buf = FLUID_ARRAY(short, buffer_size * 2);
 
   if (left == NULL || right == NULL || buf == NULL)
   {
