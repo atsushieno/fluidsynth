@@ -444,13 +444,6 @@ fluid_thread_self_set_prio (int prio_level)
     DosSetPriority (PRTYS_THREAD, PRTYC_REGULAR, PRTYD_MAXIMUM, 0);
 }
 
-#elif defined(__ANDROID__)   /* no thread priority in Android... */
-
-void
-fluid_thread_self_set_prio (int prio_level)
-{
-}
-
 #else   /* POSIX stuff..  Nice POSIX..  Good POSIX. */
 
 void
