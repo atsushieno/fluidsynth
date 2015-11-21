@@ -167,7 +167,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   SLDataFormat_PCM format_pcm = {
     SL_DATAFORMAT_PCM,
     2, /* numChannels */
-    SL_SAMPLINGRATE_44_1,
+    ((SLuint32) sample_rate) * 1000,
     SL_PCMSAMPLEFORMAT_FIXED_16,
     SL_PCMSAMPLEFORMAT_FIXED_16,
     0, /* channelMask */
