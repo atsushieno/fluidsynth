@@ -51,6 +51,8 @@ typedef struct {
   int buffer_size;
   fluid_thread_t *thread;
   int cont;
+  
+  double sample_rate;
 } fluid_opensles_audio_driver_t;
 
 
@@ -128,6 +130,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   dev->callback = func;
   dev->cont = 1;
   dev->buffer_size = period_size;
+  dev->sample_rate = sample_rate;
 
   period_bytes = period_size * sizeof (float) * 2;
   ////bufattr.maxlength = adjust_latency ? -1 : period_bytes;
@@ -272,6 +275,8 @@ fluid_opensles_audio_run(void* d)
 
     SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
       dev->player_buffer_queue_interface, buf, buffer_size * sizeof (float) * 2);
+    // FIXME: this should be removed.
+    usleep (1000000 * buffer_size / dev->sample_rate);
     if (result != 0) {
       FLUID_LOG(FLUID_ERR, "Error writing to OpenSLES connection.");
       break;
