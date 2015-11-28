@@ -91,10 +91,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   fluid_opensles_audio_driver_t* dev;
   ////pa_buffer_attr bufattr;
   double sample_rate;
-  int period_size, period_bytes, adjust_latency;
-  char *server = NULL;
-  char *device = NULL;
-  char *media_role = NULL;
+  int period_size = 512; // our default for OpenSLES
   int realtime_prio = 0;
   int err;
 
@@ -108,33 +105,14 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
 
   fluid_settings_getint(settings, "audio.period-size", &period_size);
   fluid_settings_getnum(settings, "synth.sample-rate", &sample_rate);
-  fluid_settings_dupstr(settings, "audio.opensles.server", &server);  /* ++ alloc server string */
-  fluid_settings_dupstr(settings, "audio.opensles.device", &device);  /* ++ alloc device string */
-  fluid_settings_dupstr(settings, "audio.opensles.media-role", &media_role);  /* ++ alloc media-role string */
   fluid_settings_getint(settings, "audio.realtime-prio", &realtime_prio);
-  fluid_settings_getint(settings, "audio.opensles.adjust-latency", &adjust_latency);
-
-  if (server && strcmp (server, "default") == 0)
-  {
-    FLUID_FREE (server);        /* -- free server string */
-    server = NULL;
-  }
-
-  if (device && strcmp (device, "default") == 0)
-  {
-    FLUID_FREE (device);        /* -- free device string */
-    device = NULL;
-  }
 
   dev->data = data;
   dev->callback = func;
-  dev->cont = 1;
-  dev->buffer_size = period_size;
+  dev->buffer_size = period_size * 2;
   dev->sample_rate = sample_rate;
+  dev->cont = 1;
 
-  period_bytes = period_size * sizeof (short) * 2;
-  ////bufattr.maxlength = adjust_latency ? -1 : period_bytes;
-  ////bufattr.tlength = period_bytes;
   ////bufattr.minreq = -1;
   ////bufattr.prebuf = -1;    /* Just initialize to same value as tlength */
   ////bufattr.fragsize = -1;  /* Not used */
@@ -161,16 +139,15 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
 
   SLDataLocator_AndroidSimpleBufferQueue loc_buffer_queue = {
     SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE,
-    2
+    2 /* number of buffers */
     };
-    /* TODO: verify sampling rate. Since it accepts only some values as valid ones, I ignored sample_rate and specified this directly. */
   SLDataFormat_PCM format_pcm = {
     SL_DATAFORMAT_PCM,
     2, /* numChannels */
     ((SLuint32) sample_rate) * 1000,
     SL_PCMSAMPLEFORMAT_FIXED_16,
     SL_PCMSAMPLEFORMAT_FIXED_16,
-    0, /* channelMask */
+    SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT,
     SL_BYTEORDER_LITTLEENDIAN
     };
   SLDataSource audio_src = {
@@ -212,14 +189,9 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   if (!dev->thread)
     goto error_recovery;
 
-  if (server) FLUID_FREE (server);      /* -- free server string */
-  if (device) FLUID_FREE (device);      /* -- free device string */
-
   return (fluid_audio_driver_t*) dev;
 
  error_recovery:
-  if (server) FLUID_FREE (server);      /* -- free server string */
-  if (device) FLUID_FREE (device);      /* -- free device string */
   delete_fluid_opensles_audio_driver((fluid_audio_driver_t*) dev);
   return NULL;
 }
@@ -275,12 +247,21 @@ fluid_opensles_audio_run(void* d)
 
     SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
       dev->player_buffer_queue_interface, buf, buffer_size * sizeof (short) * 2);
-    // FIXME: this should be removed.
-    usleep (1000000 * buffer_size / dev->sample_rate);
     if (result != 0) {
-      FLUID_LOG(FLUID_ERR, "Error writing to OpenSLES connection.");
-      break;
+      if (!err)
+        FLUID_LOG(FLUID_ERR, "Error writing to OpenSLES connection.");
+      err = result;
+      //break; // let's not simply break at just one single insufficient buffer.
     }
+    
+    // FIXME: this should be removed.
+    //
+    // this 0.8 is some number based on kvm-based emulator on Ubuntu.
+    // 0.9 with 11.025KHz is good. 0.8 with 22.05KHz is fair.
+    // 0.6 with 44.1KHz is bad but can sound.
+    // Maybe what is actually needed is audio latency parameter adjuster introduced at Android 4.3.
+    usleep (0.85 * 1000000 * buffer_size / dev->sample_rate);
+
   }	/* while (dev->cont) */
 
   FLUID_FREE(buf);
@@ -291,8 +272,8 @@ fluid_opensles_audio_run2(void* d)
 {
   fluid_opensles_audio_driver_t* dev = (fluid_opensles_audio_driver_t*) d;
   fluid_synth_t *synth = (fluid_synth_t *)(dev->data);
-  short *left, *right, *buf;
-  short* handle[2];
+  float *left, *right, *buf;
+  float* handle[2];
   int buffer_size;
   int err;
   int i;
@@ -300,9 +281,9 @@ fluid_opensles_audio_run2(void* d)
   buffer_size = dev->buffer_size;
 
   /* FIXME - Probably shouldn't alloc in run() */
-  left = FLUID_ARRAY(short, buffer_size);
-  right = FLUID_ARRAY(short, buffer_size);
-  buf = FLUID_ARRAY(short, buffer_size * 2);
+  left = FLUID_ARRAY(float, buffer_size);
+  right = FLUID_ARRAY(float, buffer_size);
+  buf = FLUID_ARRAY(float, buffer_size * 2);
 
   if (left == NULL || right == NULL || buf == NULL)
   {
