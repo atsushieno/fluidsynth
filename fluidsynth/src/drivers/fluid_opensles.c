@@ -83,7 +83,7 @@ new_fluid_opensles_audio_driver(fluid_settings_t* settings,
   SLresult result;
   fluid_opensles_audio_driver_t* dev;
   double sample_rate;
-  int period_size = 512; /* our default for OpenSLES */
+  int period_size;
   int realtime_prio = 0;
   double buffering_sleep_rate;
   int err;
@@ -102,7 +102,7 @@ new_fluid_opensles_audio_driver(fluid_settings_t* settings,
   fluid_settings_getnum(settings, "audio.opensles.buffering-sleep-rate", &buffering_sleep_rate);
 
   dev->data = synth;
-  dev->buffer_size = period_size * 2;
+  dev->buffer_size = period_size;
   dev->sample_rate = sample_rate;
   dev->buffering_sleep_rate = buffering_sleep_rate;
   dev->cont = 1;
@@ -238,8 +238,6 @@ fluid_opensles_audio_run(void* d)
     SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
       dev->player_buffer_queue_interface, buf, buffer_size * sizeof (short) * NUM_CHANNELS);
     if (result != 0) {
-      if (!err)
-        FLUID_LOG(FLUID_ERR, "Error writing to OpenSLES connection.");
       err = result;
       /* Do not simply break at just one single insufficient buffer. Go on. */
     }
