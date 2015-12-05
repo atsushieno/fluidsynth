@@ -33,6 +33,8 @@
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 
+#define NUM_CHANNELS 2
+
 /** fluid_opensles_audio_driver_t
  *
  * This structure should not be accessed directly. Use audio port
@@ -78,18 +80,10 @@ fluid_audio_driver_t*
 new_fluid_opensles_audio_driver(fluid_settings_t* settings,
 			    fluid_synth_t* synth)
 {
-  return new_fluid_opensles_audio_driver2(settings, NULL, synth);
-}
-
-fluid_audio_driver_t*
-new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
-			     fluid_audio_func_t func, void* data)
-{
   SLresult result;
   fluid_opensles_audio_driver_t* dev;
-  ////pa_buffer_attr bufattr;
   double sample_rate;
-  int period_size = 512; // our default for OpenSLES
+  int period_size = 512; /* our default for OpenSLES */
   int realtime_prio = 0;
   double buffering_sleep_rate;
   int err;
@@ -107,16 +101,11 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   fluid_settings_getint(settings, "audio.realtime-prio", &realtime_prio);
   fluid_settings_getnum(settings, "audio.opensles.buffering-sleep-rate", &buffering_sleep_rate);
 
-  dev->data = data;
-  dev->callback = func;
+  dev->data = synth;
   dev->buffer_size = period_size * 2;
   dev->sample_rate = sample_rate;
   dev->buffering_sleep_rate = buffering_sleep_rate;
   dev->cont = 1;
-
-  ////bufattr.minreq = -1;
-  ////bufattr.prebuf = -1;    /* Just initialize to same value as tlength */
-  ////bufattr.fragsize = -1;  /* Not used */
 
   result = slCreateEngine (&(dev->engine), 0, NULL, 0, NULL, NULL);
 
@@ -144,7 +133,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
     };
   SLDataFormat_PCM format_pcm = {
     SL_DATAFORMAT_PCM,
-    2, /* numChannels */
+    NUM_CHANNELS,
     ((SLuint32) sample_rate) * 1000,
     SL_PCMSAMPLEFORMAT_FIXED_16,
     SL_PCMSAMPLEFORMAT_FIXED_16,
@@ -185,7 +174,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   FLUID_LOG(FLUID_INFO, "Using OpenSLES driver");
 
   /* Create the audio thread */
-  dev->thread = new_fluid_thread ("opensles-audio", func ? fluid_opensles_audio_run2 : fluid_opensles_audio_run,
+  dev->thread = new_fluid_thread ("opensles-audio", fluid_opensles_audio_run,
                                   dev, realtime_prio, FALSE);
   if (!dev->thread)
     goto error_recovery;
@@ -234,7 +223,7 @@ fluid_opensles_audio_run(void* d)
   buffer_size = dev->buffer_size;
 
   /* FIXME - Probably shouldn't alloc in run() */
-  buf = FLUID_ARRAY(short, buffer_size * 2);
+  buf = FLUID_ARRAY(short, buffer_size * NUM_CHANNELS);
 
   if (buf == NULL)
   {
@@ -247,19 +236,20 @@ fluid_opensles_audio_run(void* d)
     fluid_synth_write_s16(dev->data, buffer_size, buf, 0, 2, buf, 1, 2);
 
     SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
-      dev->player_buffer_queue_interface, buf, buffer_size * sizeof (short) * 2);
+      dev->player_buffer_queue_interface, buf, buffer_size * sizeof (short) * NUM_CHANNELS);
     if (result != 0) {
       if (!err)
         FLUID_LOG(FLUID_ERR, "Error writing to OpenSLES connection.");
       err = result;
-      //break; // let's not simply break at just one single insufficient buffer.
+      /* Do not simply break at just one single insufficient buffer. Go on. */
     }
     
-    // FIXME: this should be probably removed.
-    //
-    // this 0.8 is some number based on kvm-based emulator on Ubuntu.
-    // 0.9 with 11.025KHz is good. 0.8 with 22.05KHz is fair.
-    // 0.6 with 44.1KHz is bad but can sound.
+    /* this should be probably removed.
+     *
+     * this 0.8 is some number based on kvm-based emulator on Ubuntu.
+     * 0.9 with 11.025KHz is good. 0.8 with 22.05KHz is fair.
+     * 0.6 with 44.1KHz is bad but can sound.
+     */
     usleep (dev->buffering_sleep_rate * 1000000 * buffer_size / dev->sample_rate);
 
   }	/* while (dev->cont) */
@@ -267,53 +257,3 @@ fluid_opensles_audio_run(void* d)
   FLUID_FREE(buf);
 }
 
-static void
-fluid_opensles_audio_run2(void* d)
-{
-  fluid_opensles_audio_driver_t* dev = (fluid_opensles_audio_driver_t*) d;
-  fluid_synth_t *synth = (fluid_synth_t *)(dev->data);
-  float *left, *right, *buf;
-  float* handle[2];
-  int buffer_size;
-  int err;
-  int i;
-
-  buffer_size = dev->buffer_size;
-
-  /* FIXME - Probably shouldn't alloc in run() */
-  left = FLUID_ARRAY(float, buffer_size);
-  right = FLUID_ARRAY(float, buffer_size);
-  buf = FLUID_ARRAY(float, buffer_size * 2);
-
-  if (left == NULL || right == NULL || buf == NULL)
-  {
-    FLUID_LOG(FLUID_ERR, "Out of memory.");
-    return;
-  }
-
-  handle[0] = left;
-  handle[1] = right;
-
-  while (dev->cont)
-  {
-    (*dev->callback)(synth, buffer_size, 0, NULL, 2, handle);
-
-    /* Interleave the floating point data */
-    for (i = 0; i < buffer_size; i++)
-    {
-      buf[i * 2] = left[i];
-      buf[i * 2 + 1] = right[i];
-    }
-
-    SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
-      dev->player_buffer_queue_interface, buf, buffer_size * sizeof (float) * 2);
-    if (result != 0) {
-      FLUID_LOG(FLUID_ERR, "Error writing to OpenSLES connection.");
-      break;
-    }
-  }	/* while (dev->cont) */
-
-  FLUID_FREE(left);
-  FLUID_FREE(right);
-  FLUID_FREE(buf);
-}

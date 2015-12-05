@@ -40,8 +40,6 @@ typedef struct _fluid_audriver_definition_t
 #if OPENSLES_SUPPORT
 fluid_audio_driver_t* new_fluid_opensles_audio_driver(fluid_settings_t* settings,
 						   fluid_synth_t* synth);
-fluid_audio_driver_t* new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
-						    fluid_audio_func_t func, void* data);
 int delete_fluid_opensles_audio_driver(fluid_audio_driver_t* p);
 void fluid_opensles_audio_driver_settings(fluid_settings_t* settings);
 #endif
@@ -153,7 +151,7 @@ fluid_audriver_definition_t fluid_audio_drivers[] = {
 #if OPENSLES_SUPPORT
   { "opensles",
     new_fluid_opensles_audio_driver,
-    new_fluid_opensles_audio_driver2,
+    NULL,
     delete_fluid_opensles_audio_driver,
     fluid_opensles_audio_driver_settings },
 #endif
