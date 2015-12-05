@@ -53,6 +53,7 @@ typedef struct {
   int cont;
   
   double sample_rate;
+  double buffering_sleep_rate;
 } fluid_opensles_audio_driver_t;
 
 
@@ -68,10 +69,7 @@ static void fluid_opensles_audio_run2(void* d);
 
 void fluid_opensles_audio_driver_settings(fluid_settings_t* settings)
 {
-  fluid_settings_register_str(settings, "audio.opensles.server", "default", 0, NULL, NULL);
-  fluid_settings_register_str(settings, "audio.opensles.device", "default", 0, NULL, NULL);
-  fluid_settings_register_str(settings, "audio.opensles.media-role", "music", 0, NULL, NULL);
-  fluid_settings_register_int(settings, "audio.opensles.adjust-latency", 1, 0, 1,
+  fluid_settings_register_num(settings, "audio.opensles.buffering-sleep-rate", 0.85, 0.0, 1.0,
                               FLUID_HINT_TOGGLED, NULL, NULL);
 }
 
@@ -93,6 +91,7 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   double sample_rate;
   int period_size = 512; // our default for OpenSLES
   int realtime_prio = 0;
+  double buffering_sleep_rate;
   int err;
 
   dev = FLUID_NEW(fluid_opensles_audio_driver_t);
@@ -106,11 +105,13 @@ new_fluid_opensles_audio_driver2(fluid_settings_t* settings,
   fluid_settings_getint(settings, "audio.period-size", &period_size);
   fluid_settings_getnum(settings, "synth.sample-rate", &sample_rate);
   fluid_settings_getint(settings, "audio.realtime-prio", &realtime_prio);
+  fluid_settings_getnum(settings, "audio.opensles.buffering-sleep-rate", &buffering_sleep_rate);
 
   dev->data = data;
   dev->callback = func;
   dev->buffer_size = period_size * 2;
   dev->sample_rate = sample_rate;
+  dev->buffering_sleep_rate = buffering_sleep_rate;
   dev->cont = 1;
 
   ////bufattr.minreq = -1;
@@ -254,13 +255,12 @@ fluid_opensles_audio_run(void* d)
       //break; // let's not simply break at just one single insufficient buffer.
     }
     
-    // FIXME: this should be removed.
+    // FIXME: this should be probably removed.
     //
     // this 0.8 is some number based on kvm-based emulator on Ubuntu.
     // 0.9 with 11.025KHz is good. 0.8 with 22.05KHz is fair.
     // 0.6 with 44.1KHz is bad but can sound.
-    // Maybe what is actually needed is audio latency parameter adjuster introduced at Android 4.3.
-    usleep (0.85 * 1000000 * buffer_size / dev->sample_rate);
+    usleep (dev->buffering_sleep_rate * 1000000 * buffer_size / dev->sample_rate);
 
   }	/* while (dev->cont) */
 
