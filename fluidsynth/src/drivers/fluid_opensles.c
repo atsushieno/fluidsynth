@@ -30,6 +30,7 @@
 
 #include "config.h"
 
+#include <sys/time.h>
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 
@@ -53,9 +54,9 @@ typedef struct {
   int buffer_size;
   fluid_thread_t *thread;
   int cont;
+  long next_expected_enqueue_time;
   
   double sample_rate;
-  double buffering_sleep_rate;
 } fluid_opensles_audio_driver_t;
 
 
@@ -85,7 +86,6 @@ new_fluid_opensles_audio_driver(fluid_settings_t* settings,
   double sample_rate;
   int period_size;
   int realtime_prio = 0;
-  double buffering_sleep_rate;
   int err;
 
   dev = FLUID_NEW(fluid_opensles_audio_driver_t);
@@ -99,12 +99,10 @@ new_fluid_opensles_audio_driver(fluid_settings_t* settings,
   fluid_settings_getint(settings, "audio.period-size", &period_size);
   fluid_settings_getnum(settings, "synth.sample-rate", &sample_rate);
   fluid_settings_getint(settings, "audio.realtime-prio", &realtime_prio);
-  fluid_settings_getnum(settings, "audio.opensles.buffering-sleep-rate", &buffering_sleep_rate);
 
   dev->data = synth;
   dev->buffer_size = period_size;
   dev->sample_rate = sample_rate;
-  dev->buffering_sleep_rate = buffering_sleep_rate;
   dev->cont = 1;
 
   result = slCreateEngine (&(dev->engine), 0, NULL, 0, NULL, NULL);
@@ -219,6 +217,8 @@ fluid_opensles_audio_run(void* d)
   short *buf;
   int buffer_size;
   int err;
+  struct timespec ts;
+  long current_time, wait_in_theory;
 
   buffer_size = dev->buffer_size;
 
@@ -231,8 +231,24 @@ fluid_opensles_audio_run(void* d)
     return;
   }
 
+  wait_in_theory = 1000000 * buffer_size / dev->sample_rate;
+  int cnt = 0;
+  
   while (dev->cont)
   {
+    /* compute delta time and update 'next expected enqueue' time */
+    clock_gettime(CLOCK_REALTIME, &ts);
+    current_time = ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+    long time_delta = dev->next_expected_enqueue_time == 0 ? 0 : dev->next_expected_enqueue_time - current_time;
+    if (time_delta == 0)
+	  dev->next_expected_enqueue_time += current_time + wait_in_theory;
+	else
+	  dev->next_expected_enqueue_time += wait_in_theory;
+    /* take some sleep only if it's running ahead */
+	if (time_delta > 0)
+		usleep (time_delta);
+
+    /* it seems that the synth keeps emitting synthesized buffers even if there is no sound. So keep feeding... */
     fluid_synth_write_s16(dev->data, buffer_size, buf, 0, 2, buf, 1, 2);
 
     SLresult result = (*dev->player_buffer_queue_interface)->Enqueue (
@@ -241,15 +257,6 @@ fluid_opensles_audio_run(void* d)
       err = result;
       /* Do not simply break at just one single insufficient buffer. Go on. */
     }
-    
-    /* this should be probably removed.
-     *
-     * this 0.8 is some number based on kvm-based emulator on Ubuntu.
-     * 0.9 with 11.025KHz is good. 0.8 with 22.05KHz is fair.
-     * 0.6 with 44.1KHz is bad but can sound.
-     */
-    usleep (dev->buffering_sleep_rate * 1000000 * buffer_size / dev->sample_rate);
-
   }	/* while (dev->cont) */
 
   FLUID_FREE(buf);
