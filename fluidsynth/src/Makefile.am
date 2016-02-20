@@ -4,6 +4,10 @@ AUTOMAKE_OPTIONS = subdir-objects
 
 # Tests for optional drivers
 
+if OPENSLES_SUPPORT
+fluid_opensles = drivers/fluid_opensles.c
+endif
+
 if PULSE_SUPPORT
 fluid_pulse = drivers/fluid_pulse.c
 endif
@@ -65,6 +69,7 @@ EXTRA_DIST = fluid_dll.c \
     drivers/fluid_dsound.c \
     drivers/fluid_jack.c \
     drivers/fluid_midishare.c \
+    drivers/fluid_opensles.c \
     drivers/fluid_oss.c \
     drivers/fluid_portaudio.c \
     drivers/fluid_pulse.c \
@@ -90,6 +95,7 @@ libfluidsynth_la_SOURCES = \
 	$(fluid_jack) \
 	$(fluid_ladspa) \
 	$(fluid_lash) \
+	$(fluid_opensles) \
 	$(fluid_oss) \
 	$(fluid_portaudio) \
 	$(fluid_pulse) \
@@ -176,12 +182,12 @@ INCLUDES = -I$(top_srcdir)/include \
   $(LASH_CFLAGS) $(LADCCA_CFLAGS) \
   $(READLINE_CFLAGS) $(JACK_CFLAGS) $(ALSA_CFLAGS) $(PULSE_CFLAGS) \
   $(PORTAUDIO_CFLAGS) $(DART_CFLAGS) $(GLIB_CFLAGS) $(LIBSNDFILE_CFLAGS) \
-  $(DBUS_CFLAGS)
+  $(DBUS_CFLAGS) $(OPENSLES_CFLAGS)
 
 libfluidsynth_la_LIBADD = $(LIBFLUID_LIBS) $(LASH_LIBS) $(LADCCA_LIBS) \
   $(READLINE_LIBS) $(COREAUDIO_LIBS) $(COREMIDI_LIBS) $(JACK_LIBS) \
   $(ALSA_LIBS) $(PULSE_LIBS) $(PORTAUDIO_LIBS) $(DART_LIBS)  \
-  $(GLIB_LIBS) $(LIBSNDFILE_LIBS) $(DBUS_LIBS)
+  $(GLIB_LIBS) $(LIBSNDFILE_LIBS) $(DBUS_LIBS) $(OPENSLES_LIBS)
 
 libfluidsynth_la_LDFLAGS = \
 	-version-info @LT_VERSION_INFO@ \

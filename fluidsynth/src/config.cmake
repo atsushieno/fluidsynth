@@ -181,6 +181,9 @@
 /* Define to enable PortAudio driver */
 #cmakedefine PORTAUDIO_SUPPORT @PORTAUDIO_SUPPORT@
 
+/* Define to enable OpenSLES driver */
+#cmakedefine OPENSLES_SUPPORT @OPENSLES_SUPPORT@
+
 /* Define to enable PulseAudio driver */
 #cmakedefine PULSE_SUPPORT @PULSE_SUPPORT@
 
