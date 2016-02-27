@@ -26,6 +26,174 @@
 /* Todo: Get rid of that 'include' */
 #include "fluid_sys.h"
 
+
+/***************************************************************
+ *
+ *              GENERIC STREAM LOADER AND FILE LOADER
+ */
+
+int free_fluid_file_stream_loader(fluid_stream_loader_t* loader)
+{
+  if (loader) {
+    FLUID_FREE(loader);
+  }
+FLUID_LOG(FLUID_INFO, "STREAM freed successfully.");
+  return FLUID_OK;
+}
+
+int fluid_file_stream_loader_close(fluid_stream_loader_t* loader)
+{
+  if (loader->data) {
+    fclose((FILE*) loader->data);
+  }
+  return FLUID_OK;
+}
+
+int fluid_file_stream_loader_open(fluid_stream_loader_t* loader, const char* filename)
+{
+  if (loader->data) {
+    FLUID_LOG(FLUID_ERR, "File or Stream is already open");
+    return -1;
+  }
+  loader->data = fopen(filename, "rb");
+  if (!loader->data) {
+    FLUID_LOG(FLUID_ERR, "Failed to open File or Stream: %s", filename);
+    return -1;
+  }
+  return FLUID_OK;
+}
+
+int fluid_file_stream_loader_is_open(fluid_stream_loader_t* loader)
+{
+  return loader->data ? 1 : 0;
+}
+
+int fluid_file_stream_loader_length(fluid_stream_loader_t* loader)
+{
+  long current, ret;
+  FILE *fd;
+  int err;
+  
+  fd = (FILE*) loader->data;
+  if (!loader->data) 
+    {
+	  err = TRUE;
+      FLUID_LOG(FLUID_ERR, "File or Stream is not open");
+    }
+  else if ((current = ftell (fd)) == -1)
+    {
+      err = TRUE;
+      FLUID_LOG (FLUID_ERR, _("Get current file position failed"));
+    }
+
+  else if (fseek (fd, 0L, SEEK_END) == -1)
+    {				/* seek to end of file */
+      err = TRUE;
+      FLUID_LOG (FLUID_ERR, _("Seek to end of file failed"));
+    }
+  else if ((ret = ftell (fd)) == -1)
+    {				/* position = size */
+      err = TRUE;
+      FLUID_LOG (FLUID_ERR, _("Get end of file position failed"));
+    }
+  else if (fseek (fd, current, SEEK_SET) == -1)
+    {
+      err = TRUE;
+      FLUID_LOG (FLUID_ERR, _("Seek to the original file position failed"));
+    }
+  if (!err)
+    rewind (fd);
+
+  return (int) ret;
+}
+
+int fluid_file_stream_loader_position(fluid_stream_loader_t* loader)
+{
+  int ret;
+  if (!loader->data) {
+    FLUID_LOG(FLUID_ERR, "File or Stream is not open");
+    return -1;
+  }
+  return ftell((FILE*) loader->data);
+}
+
+int fluid_file_stream_loader_safe_seek_by(fluid_stream_loader_t* loader, int position)
+{
+  int ret;
+  if (!loader->data) {
+    FLUID_LOG(FLUID_ERR, "File or Stream is not open");
+    return -1;
+  }
+  return safe_fseek((FILE*) loader->data, position, SEEK_CUR);
+}
+
+int fluid_file_stream_loader_safe_read(fluid_stream_loader_t* loader, void* buffer, int size)
+{
+  int ret;
+  if (!loader->data) {
+    FLUID_LOG(FLUID_ERR, "File or Stream is not open");
+    return -1;
+  }
+  return safe_fread(buffer, size, (FILE*) loader->data);
+}
+
+int fluid_file_stream_loader_read(fluid_stream_loader_t* loader, void* buffer, int size)
+{
+  int ret;
+  if (!loader->data) {
+    FLUID_LOG(FLUID_ERR, "File or Stream is not open");
+    return -1;
+  }
+  return fread(buffer, 1, size, (FILE*) loader->data);
+}
+
+FILE* fluid_file_stream_loader_get_sffd(fluid_stream_loader_t* loader)
+{
+  return (FILE*) loader->data;
+}
+
+static int fluid_get_file_modification_time(fluid_stream_loader_t * stream, char *filename, time_t *modification_time)
+{
+#if defined(WIN32) || defined(__OS2__)
+  *modification_time = 0;
+  return FLUID_OK;
+#else
+  struct stat buf;
+
+  if (stat(filename, &buf) == -1) {
+    return FLUID_FAILED;
+  }
+
+  *modification_time = buf.st_mtime;
+  return FLUID_OK;
+#endif
+}
+
+fluid_stream_loader_t* new_fluid_file_stream_loader()
+{
+  fluid_stream_loader_t* loader;
+
+  loader = FLUID_NEW(fluid_stream_loader_t);
+  if (loader == NULL) {
+    FLUID_LOG(FLUID_ERR, "Out of memory");
+    return NULL;
+  }
+
+  loader->data = NULL;
+  loader->free = free_fluid_file_stream_loader;
+  loader->open = fluid_file_stream_loader_open;
+  loader->is_open = fluid_file_stream_loader_is_open;
+  loader->close = fluid_file_stream_loader_close;
+  loader->length = fluid_file_stream_loader_length;
+  loader->position = fluid_file_stream_loader_position;
+  loader->safe_seek_by = fluid_file_stream_loader_safe_seek_by;
+  loader->read = fluid_file_stream_loader_read;
+  loader->safe_read = fluid_file_stream_loader_safe_read;
+  loader->get_sffd = fluid_file_stream_loader_get_sffd;
+  loader->get_modtime = fluid_get_file_modification_time;
+}
+
+
 /***************************************************************
  *
  *                           SFONT LOADER
@@ -34,14 +202,37 @@
 fluid_sfloader_t* new_fluid_defsfloader(fluid_settings_t* settings)
 {
   fluid_sfloader_t* loader;
+  defsfloader_data_t* data;
+  fluid_stream_loader_t* stream;
+    
+  data = FLUID_NEW(defsfloader_data_t);
+  if (data == NULL) {
+    FLUID_LOG(FLUID_ERR, "Out of memory");
+    return NULL;
+  }
+  
+  stream = new_fluid_file_stream_loader();
+  if (stream == NULL) {
+    FLUID_LOG(FLUID_ERR, "Out of memory");
+    if (data)
+	  FLUID_FREE(data);
+    return NULL;
+  }
+
+  data->settings = settings;
+  data->stream = stream;
 
   loader = FLUID_NEW(fluid_sfloader_t);
   if (loader == NULL) {
     FLUID_LOG(FLUID_ERR, "Out of memory");
+    if (stream)
+	  FLUID_FREE(stream);
+    if (data)
+	  FLUID_FREE(data);
     return NULL;
   }
 
-  loader->data = settings;
+  loader->data = data;
   loader->free = delete_fluid_defsfloader;
   loader->load = fluid_defsfloader_load;
 
@@ -60,14 +251,16 @@ fluid_sfont_t* fluid_defsfloader_load(fluid_sfloader_t* loader, const char* file
 {
   fluid_defsfont_t* defsfont;
   fluid_sfont_t* sfont;
+  defsfloader_data_t* stream_data;
 
-  defsfont = new_fluid_defsfont(loader->data);
+  stream_data = (defsfloader_data_t*) loader->data;
+  defsfont = new_fluid_defsfont(stream_data->settings);
 
   if (defsfont == NULL) {
     return NULL;
   }
 
-  if (fluid_defsfont_load(defsfont, filename) == FLUID_FAILED) {
+  if (fluid_defsfont_load(defsfont, stream_data->stream, filename) == FLUID_FAILED) {
     delete_fluid_defsfont(defsfont);
     return NULL;
   }
@@ -227,34 +420,17 @@ typedef struct _fluid_cached_sampledata_t {
 static fluid_cached_sampledata_t* all_cached_sampledata = NULL;
 static fluid_mutex_t cached_sampledata_mutex = FLUID_MUTEX_INIT;
 
-static int fluid_get_file_modification_time(char *filename, time_t *modification_time)
-{
-#if defined(WIN32) || defined(__OS2__)
-  *modification_time = 0;
-  return FLUID_OK;
-#else
-  struct stat buf;
-
-  if (stat(filename, &buf) == -1) {
-    return FLUID_FAILED;
-  }
-
-  *modification_time = buf.st_mtime;
-  return FLUID_OK;
-#endif
-}
-
-static int fluid_cached_sampledata_load(char *filename, unsigned int samplepos,
+static int fluid_cached_sampledata_load(fluid_stream_loader_t * stream, char *filename, unsigned int samplepos,
   unsigned int samplesize, short **sampledata, int try_mlock)
 {
-  fluid_file fd = NULL;
+  int original_position;
   short *loaded_sampledata = NULL;
   fluid_cached_sampledata_t* cached_sampledata = NULL;
   time_t modification_time;
 
   fluid_mutex_lock(cached_sampledata_mutex);
 
-  if (fluid_get_file_modification_time(filename, &modification_time) == FLUID_FAILED) {
+  if (stream->get_modtime(stream, filename, &modification_time) == FLUID_FAILED) {
     FLUID_LOG(FLUID_WARN, "Unable to read modificaton time of soundfont file.");
     modification_time = 0;
   }
@@ -282,12 +458,17 @@ static int fluid_cached_sampledata_load(char *filename, unsigned int samplepos,
     goto success_exit;
   }
 
-  fd = FLUID_FOPEN(filename, "rb");
-  if (fd == NULL) {
-    FLUID_LOG(FLUID_ERR, "Can't open soundfont file");
-    goto error_exit;
+  original_position = stream->is_open(stream) ? stream->position(stream) : -1;
+  if (original_position < 0) {
+    if (stream->open(stream, filename) != FLUID_OK) {
+      FLUID_LOG(FLUID_ERR, "Can't open soundfont file");
+      goto error_exit;
+    }
   }
-  if (FLUID_FSEEK(fd, samplepos, SEEK_SET) == -1) {
+  else
+    stream->safe_seek_by(stream, -original_position); /* go to initial position */
+
+  if (stream->safe_seek_by(stream, samplepos) == -1) {
     perror("error");
     FLUID_LOG(FLUID_ERR, "Failed to seek position in data file");
     goto error_exit;
@@ -299,14 +480,16 @@ static int fluid_cached_sampledata_load(char *filename, unsigned int samplepos,
     FLUID_LOG(FLUID_ERR, "Out of memory");
     goto error_exit;
   }
-  if (FLUID_FREAD(loaded_sampledata, 1, samplesize, fd) < samplesize) {
+
+  if (stream->read(stream, loaded_sampledata, samplesize) < samplesize) {
     FLUID_LOG(FLUID_ERR, "Failed to read sample data");
     goto error_exit;
   }
 
-  FLUID_FCLOSE(fd);
-  fd = NULL;
-
+  if (original_position < 0)
+    stream->close(stream);
+  else
+    stream->safe_seek_by(stream, original_position - stream->position(stream)); /* go back to the original position */
 
   cached_sampledata = (fluid_cached_sampledata_t*) FLUID_MALLOC(sizeof(fluid_cached_sampledata_t));
   if (cached_sampledata == NULL) {
@@ -361,9 +544,7 @@ static int fluid_cached_sampledata_load(char *filename, unsigned int samplepos,
   return FLUID_OK;
 
  error_exit:
-  if (fd != NULL) {
-    FLUID_FCLOSE(fd);
-  }
+  stream->close(stream);
   if (loaded_sampledata != NULL) {
     FLUID_FREE(loaded_sampledata);
   }
@@ -543,7 +724,7 @@ char* fluid_defsfont_get_name(fluid_defsfont_t* sfont)
 /*
  * fluid_defsfont_load
  */
-int fluid_defsfont_load(fluid_defsfont_t* sfont, const char* file)
+int fluid_defsfont_load(fluid_defsfont_t* sfont, fluid_stream_loader_t* stream, const char* file)
 {
   SFData* sfdata;
   fluid_list_t *p;
@@ -560,9 +741,9 @@ int fluid_defsfont_load(fluid_defsfont_t* sfont, const char* file)
   FLUID_STRCPY(sfont->filename, file);
 
   /* The actual loading is done in the sfont and sffile files */
-  sfdata = sfload_file(file);
+  sfdata = sfload_file(file, stream);
   if (sfdata == NULL) {
-    FLUID_LOG(FLUID_ERR, "Couldn't load soundfont file");
+    FLUID_LOG(FLUID_ERR, "Couldn't load soundfont file: %s", file);
     return FLUID_FAILED;
   }
 
@@ -572,7 +753,7 @@ int fluid_defsfont_load(fluid_defsfont_t* sfont, const char* file)
   sfont->samplesize = sfdata->samplesize;
 
   /* load sample data in one block */
-  if (fluid_defsfont_load_sampledata(sfont) != FLUID_OK)
+  if (fluid_defsfont_load_sampledata(stream, sfont) != FLUID_OK)
     goto err_exit;
 
   /* Create all the sample headers */
@@ -667,9 +848,9 @@ int fluid_defsfont_add_preset(fluid_defsfont_t* sfont, fluid_defpreset_t* preset
  * fluid_defsfont_load_sampledata
  */
 int
-fluid_defsfont_load_sampledata(fluid_defsfont_t* sfont)
+fluid_defsfont_load_sampledata(fluid_stream_loader_t* stream, fluid_defsfont_t* sfont)
 {
-  return fluid_cached_sampledata_load(sfont->filename, sfont->samplepos,
+  return fluid_cached_sampledata_load(stream, sfont->filename, sfont->samplepos,
     sfont->samplesize, &sfont->sampledata, sfont->mlock);
 }
 
@@ -1873,44 +2054,44 @@ fluid_sample_import_sfont(fluid_sample_t* sample, SFSample* sfsample, fluid_defs
 
 #if FLUID_IS_BIG_ENDIAN
 
-#define READCHUNK(var,fd)	G_STMT_START {		\
-	if (!safe_fread(var, 8, fd))			\
+#define READCHUNK(var,stream)	G_STMT_START {		\
+	if (!stream->safe_read(stream, var, 8))			\
 		return(FAIL);				\
 	((SFChunk *)(var))->size = GUINT32_FROM_LE(((SFChunk *)(var))->size);  \
 } G_STMT_END
 
-#define READD(var,fd)		G_STMT_START {		\
+#define READD(var,stream)		G_STMT_START {		\
 	unsigned int _temp;				\
-	if (!safe_fread(&_temp, 4, fd))			\
+	if (!stream->safe_read(stream, &_temp, 4))			\
 		return(FAIL);				\
 	var = GINT32_FROM_LE(_temp);			\
 } G_STMT_END
 
-#define READW(var,fd)		G_STMT_START {		\
+#define READW(var,stream)		G_STMT_START {		\
 	unsigned short _temp;				\
-	if (!safe_fread(&_temp, 2, fd))			\
+	if (!stream->safe_read(stream, &_temp, 2))			\
 		return(FAIL);				\
 	var = GINT16_FROM_LE(_temp);			\
 } G_STMT_END
 
 #else
 
-#define READCHUNK(var,fd)	G_STMT_START {		\
-    if (!safe_fread(var, 8, fd))			\
+#define READCHUNK(var,stream)	G_STMT_START {		\
+    if (!stream->safe_read(stream, var, 8))			\
 	return(FAIL);					\
     ((SFChunk *)(var))->size = GUINT32_FROM_LE(((SFChunk *)(var))->size);  \
 } G_STMT_END
 
-#define READD(var,fd)		G_STMT_START {		\
+#define READD(var,stream)		G_STMT_START {		\
     unsigned int _temp;					\
-    if (!safe_fread(&_temp, 4, fd))			\
+    if (!stream->safe_read(stream, &_temp, 4))			\
 	return(FAIL);					\
     var = GINT32_FROM_LE(_temp);			\
 } G_STMT_END
 
-#define READW(var,fd)		G_STMT_START {		\
+#define READW(var,stream)		G_STMT_START {		\
     unsigned short _temp;					\
-    if (!safe_fread(&_temp, 2, fd))			\
+    if (!stream->safe_read(stream, &_temp, 2))			\
 	return(FAIL);					\
     var = GINT16_FROM_LE(_temp);			\
 } G_STMT_END
@@ -1918,29 +2099,29 @@ fluid_sample_import_sfont(fluid_sample_t* sample, SFSample* sfsample, fluid_defs
 #endif
 
 
-#define READID(var,fd)		G_STMT_START {		\
-    if (!safe_fread(var, 4, fd))			\
+#define READID(var,stream)		G_STMT_START {		\
+    if (!stream->safe_read(stream, var, 4))			\
 	return(FAIL);					\
 } G_STMT_END
 
-#define READSTR(var,fd)		G_STMT_START {		\
-    if (!safe_fread(var, 20, fd))			\
+#define READSTR(var,stream)		G_STMT_START {		\
+    if (!stream->safe_read(stream, var, 20))			\
 	return(FAIL);					\
     (*var)[20] = '\0';					\
 } G_STMT_END
 
-#define READB(var,fd)		G_STMT_START {		\
-    if (!safe_fread(&var, 1, fd))			\
+#define READB(var,stream)		G_STMT_START {		\
+    if (!stream->safe_read(stream, &var, 1))			\
 	return(FAIL);					\
 } G_STMT_END
 
-#define FSKIP(size,fd)		G_STMT_START {		\
-    if (!safe_fseek(fd, size, SEEK_CUR))		\
+#define FSKIP(size,stream)		G_STMT_START {		\
+    if (!stream->safe_seek_by(stream, size))		\
 	return(FAIL);					\
 } G_STMT_END
 
-#define FSKIPW(fd)		G_STMT_START {		\
-    if (!safe_fseek(fd, 2, SEEK_CUR))			\
+#define FSKIPW(stream)		G_STMT_START {		\
+    if (!stream->safe_seek_by(stream, 2))			\
 	return(FAIL);					\
 } G_STMT_END
 
@@ -1953,22 +2134,22 @@ fluid_sample_import_sfont(fluid_sample_t* sample, SFSample* sfsample, fluid_defs
 } G_STMT_END
 
 static int chunkid (unsigned int id);
-static int load_body (unsigned int size, SFData * sf, FILE * fd);
-static int read_listchunk (SFChunk * chunk, FILE * fd);
-static int process_info (int size, SFData * sf, FILE * fd);
-static int process_sdta (unsigned int size, SFData * sf, FILE * fd);
+static int load_body (unsigned int size, SFData * sf, fluid_stream_loader_t * stream);
+static int read_listchunk (SFChunk * chunk, fluid_stream_loader_t * stream);
+static int process_info (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int process_sdta (unsigned int size, SFData * sf, fluid_stream_loader_t * stream);
 static int pdtahelper (unsigned int expid, unsigned int reclen, SFChunk * chunk,
-  int * size, FILE * fd);
-static int process_pdta (int size, SFData * sf, FILE * fd);
-static int load_phdr (int size, SFData * sf, FILE * fd);
-static int load_pbag (int size, SFData * sf, FILE * fd);
-static int load_pmod (int size, SFData * sf, FILE * fd);
-static int load_pgen (int size, SFData * sf, FILE * fd);
-static int load_ihdr (int size, SFData * sf, FILE * fd);
-static int load_ibag (int size, SFData * sf, FILE * fd);
-static int load_imod (int size, SFData * sf, FILE * fd);
-static int load_igen (int size, SFData * sf, FILE * fd);
-static int load_shdr (unsigned int size, SFData * sf, FILE * fd);
+  int * size, fluid_stream_loader_t * stream);
+static int process_pdta (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_phdr (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_pbag (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_pmod (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_pgen (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_ihdr (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_ibag (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_imod (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_igen (int size, SFData * sf, fluid_stream_loader_t * stream);
+static int load_shdr (unsigned int size, SFData * sf, fluid_stream_loader_t * stream);
 static int fixup_pgen (SFData * sf);
 static int fixup_igen (SFData * sf);
 static int fixup_sample (SFData * sf);
@@ -1996,14 +2177,13 @@ chunkid (unsigned int id)
 }
 
 SFData *
-sfload_file (const char * fname)
+sfload_file (const char * fname, fluid_stream_loader_t * stream)
 {
   SFData *sf = NULL;
-  FILE *fd;
   int fsize = 0;
   int err = FALSE;
 
-  if (!(fd = fopen (fname, "rb")))
+  if (stream->open (stream, fname) != FLUID_OK)
     {
       FLUID_LOG (FLUID_ERR, _("Unable to open file \"%s\""), fname);
       return (NULL);
@@ -2012,7 +2192,7 @@ sfload_file (const char * fname)
   if (!(sf = FLUID_NEW (SFData)))
     {
       FLUID_LOG(FLUID_ERR, "Out of memory");
-      fclose(fd);
+      stream->close (stream);
       err = TRUE;
     }
 
@@ -2020,30 +2200,25 @@ sfload_file (const char * fname)
     {
       memset (sf, 0, sizeof (SFData));	/* zero sfdata */
       sf->fname = FLUID_STRDUP (fname);	/* copy file name */
-      sf->sffd = fd;
+      sf->sffd = stream->get_sffd (stream);
     }
 
   /* get size of file */
-  if (!err && fseek (fd, 0L, SEEK_END) == -1)
-    {				/* seek to end of file */
+  if (!(fsize = stream->length (stream)))
+    {
+      FLUID_LOG(FLUID_ERR, "Could not get file size.");
       err = TRUE;
-      FLUID_LOG (FLUID_ERR, _("Seek to end of file failed"));
     }
-  if (!err && (fsize = ftell (fd)) == -1)
-    {				/* position = size */
-      err = TRUE;
-      FLUID_LOG (FLUID_ERR, _("Get end of file position failed"));
+  if (!err && !load_body (fsize, sf, stream))
+    {
+      FLUID_LOG(FLUID_ERR, "Failed to load sound font body.");
+      err = TRUE;			/* load the sfont */
     }
-  if (!err)
-    rewind (fd);
-
-  if (!err && !load_body (fsize, sf, fd))
-    err = TRUE;			/* load the sfont */
 
   if (err)
     {
       if (sf)
-	sfont_close (sf);
+        sfont_close (sf);
       return (NULL);
     }
 
@@ -2051,17 +2226,17 @@ sfload_file (const char * fname)
 }
 
 static int
-load_body (unsigned int size, SFData * sf, FILE * fd)
+load_body (unsigned int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   SFChunk chunk;
 
-  READCHUNK (&chunk, fd);	/* load RIFF chunk */
+  READCHUNK (&chunk, stream);	/* load RIFF chunk */
   if (chunkid (chunk.id) != RIFF_ID) {	/* error if not RIFF */
     FLUID_LOG (FLUID_ERR, _("Not a RIFF file"));
     return (FAIL);
   }
 
-  READID (&chunk.id, fd);	/* load file ID */
+  READID (&chunk.id, stream);	/* load file ID */
   if (chunkid (chunk.id) != SFBK_ID) {	/* error if not SFBK_ID */
     FLUID_LOG (FLUID_ERR, _("Not a SoundFont file"));
     return (FAIL);
@@ -2073,28 +2248,29 @@ load_body (unsigned int size, SFData * sf, FILE * fd)
   }
 
   /* Process INFO block */
-  if (!read_listchunk (&chunk, fd))
+  if (!read_listchunk (&chunk, stream))
     return (FAIL);
   if (chunkid (chunk.id) != INFO_ID)
     return (gerr (ErrCorr, _("Invalid ID found when expecting INFO chunk")));
-  if (!process_info (chunk.size, sf, fd))
+  if (!process_info (chunk.size, sf, stream))
     return (FAIL);
+  
 
   /* Process sample chunk */
-  if (!read_listchunk (&chunk, fd))
+  if (!read_listchunk (&chunk, stream))
     return (FAIL);
   if (chunkid (chunk.id) != SDTA_ID)
     return (gerr (ErrCorr,
 	_("Invalid ID found when expecting SAMPLE chunk")));
-  if (!process_sdta (chunk.size, sf, fd))
+  if (!process_sdta (chunk.size, sf, stream))
     return (FAIL);
 
   /* process HYDRA chunk */
-  if (!read_listchunk (&chunk, fd))
+  if (!read_listchunk (&chunk, stream))
     return (FAIL);
   if (chunkid (chunk.id) != PDTA_ID)
     return (gerr (ErrCorr, _("Invalid ID found when expecting HYDRA chunk")));
-  if (!process_pdta (chunk.size, sf, fd))
+  if (!process_pdta (chunk.size, sf, stream))
     return (FAIL);
 
   if (!fixup_pgen (sf))
@@ -2112,18 +2288,18 @@ load_body (unsigned int size, SFData * sf, FILE * fd)
 }
 
 static int
-read_listchunk (SFChunk * chunk, FILE * fd)
+read_listchunk (SFChunk * chunk, fluid_stream_loader_t * stream)
 {
-  READCHUNK (chunk, fd);	/* read list chunk */
+  READCHUNK (chunk, stream);	/* read list chunk */
   if (chunkid (chunk->id) != LIST_ID)	/* error if ! list chunk */
     return (gerr (ErrCorr, _("Invalid chunk id in level 0 parse")));
-  READID (&chunk->id, fd);	/* read id string */
+  READID (&chunk->id, stream);	/* read id string */
   chunk->size -= 4;
   return (OK);
 }
 
 static int
-process_info (int size, SFData * sf, FILE * fd)
+process_info (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   SFChunk chunk;
   unsigned char id;
@@ -2132,7 +2308,7 @@ process_info (int size, SFData * sf, FILE * fd)
 
   while (size > 0)
     {
-      READCHUNK (&chunk, fd);
+      READCHUNK (&chunk, stream);
       size -= 8;
 
       id = chunkid (chunk.id);
@@ -2143,9 +2319,9 @@ process_info (int size, SFData * sf, FILE * fd)
 	    return (gerr (ErrCorr,
 		_("Sound font version info chunk has invalid size")));
 
-	  READW (ver, fd);
+	  READW (ver, stream);
 	  sf->version.major = ver;
-	  READW (ver, fd);
+	  READW (ver, stream);
 	  sf->version.minor = ver;
 
 	  if (sf->version.major < 2) {
@@ -2172,9 +2348,9 @@ process_info (int size, SFData * sf, FILE * fd)
 	    return (gerr (ErrCorr,
 		_("ROM version info chunk has invalid size")));
 
-	  READW (ver, fd);
+	  READW (ver, stream);
 	  sf->romver.major = ver;
-	  READW (ver, fd);
+	  READW (ver, stream);
 	  sf->romver.minor = ver;
 	}
       else if (id != UNKN_ID)
@@ -2196,7 +2372,7 @@ process_info (int size, SFData * sf, FILE * fd)
 	  sf->info = fluid_list_append (sf->info, item);
 
 	  *(unsigned char *) item = id;
-	  if (!safe_fread (&item[1], chunk.size, fd))
+	  if (!stream->safe_read (stream, &item[1], chunk.size))
 	    return (FAIL);
 
 	  /* force terminate info item (don't forget uint8 info ID) */
@@ -2214,7 +2390,7 @@ process_info (int size, SFData * sf, FILE * fd)
 }
 
 static int
-process_sdta (unsigned int size, SFData * sf, FILE * fd)
+process_sdta (unsigned int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   SFChunk chunk;
 
@@ -2222,7 +2398,7 @@ process_sdta (unsigned int size, SFData * sf, FILE * fd)
     return (OK);		/* no sample data? */
 
   /* read sub chunk */
-  READCHUNK (&chunk, fd);
+  READCHUNK (&chunk, stream);
   size -= 8;
 
   if (chunkid (chunk.id) != SMPL_ID)
@@ -2236,27 +2412,27 @@ process_sdta (unsigned int size, SFData * sf, FILE * fd)
     return (gerr (ErrCorr, _("SDTA chunk size mismatch")));
 
   /* sample data follows */
-  sf->samplepos = ftell (fd);
+  sf->samplepos = stream->position (stream);
 
   /* used in fixup_sample() to check validity of sample headers */
   sdtachunk_size = chunk.size;
   sf->samplesize = chunk.size;
 
-  FSKIP (size, fd);
+  FSKIP (size, stream);
 
   return (OK);
 }
 
 static int
 pdtahelper (unsigned int expid, unsigned int reclen, SFChunk * chunk,
-  int * size, FILE * fd)
+  int * size, fluid_stream_loader_t * stream)
 {
   unsigned int id;
   char *expstr;
 
   expstr = CHNKIDSTR (expid);	/* in case we need it */
 
-  READCHUNK (chunk, fd);
+  READCHUNK (chunk, stream);
   *size -= 8;
 
   if ((id = chunkid (chunk->id)) != expid)
@@ -2274,53 +2450,53 @@ pdtahelper (unsigned int expid, unsigned int reclen, SFChunk * chunk,
 }
 
 static int
-process_pdta (int size, SFData * sf, FILE * fd)
+process_pdta (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   SFChunk chunk;
 
-  if (!pdtahelper (PHDR_ID, SFPHDRSIZE, &chunk, &size, fd))
+  if (!pdtahelper (PHDR_ID, SFPHDRSIZE, &chunk, &size, stream))
     return (FAIL);
-  if (!load_phdr (chunk.size, sf, fd))
-    return (FAIL);
-
-  if (!pdtahelper (PBAG_ID, SFBAGSIZE, &chunk, &size, fd))
-    return (FAIL);
-  if (!load_pbag (chunk.size, sf, fd))
+  if (!load_phdr (chunk.size, sf, stream))
     return (FAIL);
 
-  if (!pdtahelper (PMOD_ID, SFMODSIZE, &chunk, &size, fd))
+  if (!pdtahelper (PBAG_ID, SFBAGSIZE, &chunk, &size, stream))
     return (FAIL);
-  if (!load_pmod (chunk.size, sf, fd))
-    return (FAIL);
-
-  if (!pdtahelper (PGEN_ID, SFGENSIZE, &chunk, &size, fd))
-    return (FAIL);
-  if (!load_pgen (chunk.size, sf, fd))
+  if (!load_pbag (chunk.size, sf, stream))
     return (FAIL);
 
-  if (!pdtahelper (IHDR_ID, SFIHDRSIZE, &chunk, &size, fd))
+  if (!pdtahelper (PMOD_ID, SFMODSIZE, &chunk, &size, stream))
     return (FAIL);
-  if (!load_ihdr (chunk.size, sf, fd))
-    return (FAIL);
-
-  if (!pdtahelper (IBAG_ID, SFBAGSIZE, &chunk, &size, fd))
-    return (FAIL);
-  if (!load_ibag (chunk.size, sf, fd))
+  if (!load_pmod (chunk.size, sf, stream))
     return (FAIL);
 
-  if (!pdtahelper (IMOD_ID, SFMODSIZE, &chunk, &size, fd))
+  if (!pdtahelper (PGEN_ID, SFGENSIZE, &chunk, &size, stream))
     return (FAIL);
-  if (!load_imod (chunk.size, sf, fd))
-    return (FAIL);
-
-  if (!pdtahelper (IGEN_ID, SFGENSIZE, &chunk, &size, fd))
-    return (FAIL);
-  if (!load_igen (chunk.size, sf, fd))
+  if (!load_pgen (chunk.size, sf, stream))
     return (FAIL);
 
-  if (!pdtahelper (SHDR_ID, SFSHDRSIZE, &chunk, &size, fd))
+  if (!pdtahelper (IHDR_ID, SFIHDRSIZE, &chunk, &size, stream))
     return (FAIL);
-  if (!load_shdr (chunk.size, sf, fd))
+  if (!load_ihdr (chunk.size, sf, stream))
+    return (FAIL);
+
+  if (!pdtahelper (IBAG_ID, SFBAGSIZE, &chunk, &size, stream))
+    return (FAIL);
+  if (!load_ibag (chunk.size, sf, stream))
+    return (FAIL);
+
+  if (!pdtahelper (IMOD_ID, SFMODSIZE, &chunk, &size, stream))
+    return (FAIL);
+  if (!load_imod (chunk.size, sf, stream))
+    return (FAIL);
+
+  if (!pdtahelper (IGEN_ID, SFGENSIZE, &chunk, &size, stream))
+    return (FAIL);
+  if (!load_igen (chunk.size, sf, stream))
+    return (FAIL);
+
+  if (!pdtahelper (SHDR_ID, SFSHDRSIZE, &chunk, &size, stream))
+    return (FAIL);
+  if (!load_shdr (chunk.size, sf, stream))
     return (FAIL);
 
   return (OK);
@@ -2328,7 +2504,7 @@ process_pdta (int size, SFData * sf, FILE * fd)
 
 /* preset header loader */
 static int
-load_phdr (int size, SFData * sf, FILE * fd)
+load_phdr (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   int i, i2;
   SFPreset *p, *pr = NULL;	/* ptr to current & previous preset */
@@ -2341,7 +2517,7 @@ load_phdr (int size, SFData * sf, FILE * fd)
   if (i == 0)
     {				/* at least one preset + term record */
       FLUID_LOG (FLUID_WARN, _("File contains no presets"));
-      FSKIP (SFPHDRSIZE, fd);
+      FSKIP (SFPHDRSIZE, stream);
       return (OK);
     }
 
@@ -2350,13 +2526,13 @@ load_phdr (int size, SFData * sf, FILE * fd)
       p = FLUID_NEW (SFPreset);
       sf->preset = fluid_list_append (sf->preset, p);
       p->zone = NULL;		/* In case of failure, sfont_close can cleanup */
-      READSTR (&p->name, fd);	/* possible read failure ^ */
-      READW (p->prenum, fd);
-      READW (p->bank, fd);
-      READW (zndx, fd);
-      READD (p->libr, fd);
-      READD (p->genre, fd);
-      READD (p->morph, fd);
+      READSTR (&p->name, stream);	/* possible read failure ^ */
+      READW (p->prenum, stream);
+      READW (p->bank, stream);
+      READW (zndx, stream);
+      READD (p->libr, stream);
+      READD (p->genre, stream);
+      READD (p->morph, stream);
 
       if (pr)
 	{			/* not first preset? */
@@ -2374,9 +2550,9 @@ load_phdr (int size, SFData * sf, FILE * fd)
       pzndx = zndx;
     }
 
-  FSKIP (24, fd);
-  READW (zndx, fd);		/* Read terminal generator index */
-  FSKIP (12, fd);
+  FSKIP (24, stream);
+  READW (zndx, stream);		/* Read terminal generator index */
+  FSKIP (12, stream);
 
   if (zndx < pzndx)
     return (gerr (ErrCorr, _("Preset header indices not monotonic")));
@@ -2391,7 +2567,7 @@ load_phdr (int size, SFData * sf, FILE * fd)
 
 /* preset bag loader */
 static int
-load_pbag (int size, SFData * sf, FILE * fd)
+load_pbag (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   fluid_list_t *p, *p2;
   SFZone *z, *pz = NULL;
@@ -2414,8 +2590,8 @@ load_pbag (int size, SFData * sf, FILE * fd)
 	  p2->data = z;
 	  z->gen = NULL;	/* Init gen and mod before possible failure, */
 	  z->mod = NULL;	/* to ensure proper cleanup (sfont_close) */
-	  READW (genndx, fd);	/* possible read failure ^ */
-	  READW (modndx, fd);
+	  READW (genndx, stream);	/* possible read failure ^ */
+	  READW (modndx, stream);
 	  z->instsamp = NULL;
 
 	  if (pz)
@@ -2445,8 +2621,8 @@ load_pbag (int size, SFData * sf, FILE * fd)
   if (size != 0)
     return (gerr (ErrCorr, _("Preset bag chunk size mismatch")));
 
-  READW (genndx, fd);
-  READW (modndx, fd);
+  READW (genndx, stream);
+  READW (modndx, stream);
 
   if (!pz)
     {
@@ -2473,7 +2649,7 @@ load_pbag (int size, SFData * sf, FILE * fd)
 
 /* preset modulator loader */
 static int
-load_pmod (int size, SFData * sf, FILE * fd)
+load_pmod (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   fluid_list_t *p, *p2, *p3;
   SFMod *m;
@@ -2492,11 +2668,11 @@ load_pmod (int size, SFData * sf, FILE * fd)
 		    _("Preset modulator chunk size mismatch")));
 	      m = FLUID_NEW (SFMod);
 	      p3->data = m;
-	      READW (m->src, fd);
-	      READW (m->dest, fd);
-	      READW (m->amount, fd);
-	      READW (m->amtsrc, fd);
-	      READW (m->trans, fd);
+	      READW (m->src, stream);
+	      READW (m->dest, stream);
+	      READW (m->amount, stream);
+	      READW (m->amtsrc, stream);
+	      READW (m->trans, stream);
 	      p3 = fluid_list_next (p3);
 	    }
 	  p2 = fluid_list_next (p2);
@@ -2514,7 +2690,7 @@ load_pmod (int size, SFData * sf, FILE * fd)
   size -= SFMODSIZE;
   if (size != 0)
     return (gerr (ErrCorr, _("Preset modulator chunk size mismatch")));
-  FSKIP (SFMODSIZE, fd);	/* terminal mod */
+  FSKIP (SFMODSIZE, stream);	/* terminal mod */
 
   return (OK);
 }
@@ -2532,7 +2708,7 @@ load_pmod (int size, SFData * sf, FILE * fd)
  * if a duplicate generator exists replace previous one
  * ------------------------------------------------------------------- */
 static int
-load_pgen (int size, SFData * sf, FILE * fd)
+load_pgen (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   fluid_list_t *p, *p2, *p3, *dup, **hz = NULL;
   SFZone *z;
@@ -2563,15 +2739,15 @@ load_pgen (int size, SFData * sf, FILE * fd)
 		return (gerr (ErrCorr,
 		    _("Preset generator chunk size mismatch")));
 
-	      READW (genid, fd);
+	      READW (genid, stream);
 
 	      if (genid == Gen_KeyRange)
 		{		/* nothing precedes */
 		  if (level == 0)
 		    {
 		      level = 1;
-		      READB (genval.range.lo, fd);
-		      READB (genval.range.hi, fd);
+		      READB (genval.range.lo, stream);
+		      READB (genval.range.hi, stream);
 		    }
 		  else
 		    skip = TRUE;
@@ -2581,8 +2757,8 @@ load_pgen (int size, SFData * sf, FILE * fd)
 		  if (level <= 1)
 		    {
 		      level = 2;
-		      READB (genval.range.lo, fd);
-		      READB (genval.range.hi, fd);
+		      READB (genval.range.lo, stream);
+		      READB (genval.range.hi, stream);
 		    }
 		  else
 		    skip = TRUE;
@@ -2590,7 +2766,7 @@ load_pgen (int size, SFData * sf, FILE * fd)
 	      else if (genid == Gen_Instrument)
 		{		/* inst is last gen */
 		  level = 3;
-		  READW (genval.uword, fd);
+		  READW (genval.uword, stream);
 		  ((SFZone *) (p2->data))->instsamp = GINT_TO_POINTER (genval.uword + 1);
 		  break;	/* break out of generator loop */
 		}
@@ -2599,7 +2775,7 @@ load_pgen (int size, SFData * sf, FILE * fd)
 		  level = 2;
 		  if (gen_validp (genid))
 		    {		/* generator valid? */
-		      READW (genval.sword, fd);
+		      READW (genval.sword, stream);
 		      dup = gen_inlist (genid, z->gen);
 		    }
 		  else
@@ -2625,7 +2801,7 @@ load_pgen (int size, SFData * sf, FILE * fd)
 		{		/* Skip this generator */
 		  discarded = TRUE;
 		  drop = TRUE;
-		  FSKIPW (fd);
+		  FSKIPW (stream);
 		}
 
 	      if (!drop)
@@ -2670,7 +2846,7 @@ load_pgen (int size, SFData * sf, FILE * fd)
 	      if ((size -= SFGENSIZE) < 0)
 		return (gerr (ErrCorr,
 		    _("Preset generator chunk size mismatch")));
-	      FSKIP (SFGENSIZE, fd);
+	      FSKIP (SFGENSIZE, stream);
 	      SLADVREM (z->gen, p3);
 	    }
 
@@ -2690,14 +2866,14 @@ load_pgen (int size, SFData * sf, FILE * fd)
   size -= SFGENSIZE;
   if (size != 0)
     return (gerr (ErrCorr, _("Preset generator chunk size mismatch")));
-  FSKIP (SFGENSIZE, fd);	/* terminal gen */
+  FSKIP (SFGENSIZE, stream);	/* terminal gen */
 
   return (OK);
 }
 
 /* instrument header loader */
 static int
-load_ihdr (int size, SFData * sf, FILE * fd)
+load_ihdr (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   int i, i2;
   SFInst *p, *pr = NULL;	/* ptr to current & previous instrument */
@@ -2710,7 +2886,7 @@ load_ihdr (int size, SFData * sf, FILE * fd)
   if (size == 0)
     {				/* at least one preset + term record */
       FLUID_LOG (FLUID_WARN, _("File contains no instruments"));
-      FSKIP (SFIHDRSIZE, fd);
+      FSKIP (SFIHDRSIZE, stream);
       return (OK);
     }
 
@@ -2719,8 +2895,8 @@ load_ihdr (int size, SFData * sf, FILE * fd)
       p = FLUID_NEW (SFInst);
       sf->inst = fluid_list_append (sf->inst, p);
       p->zone = NULL;		/* For proper cleanup if fail (sfont_close) */
-      READSTR (&p->name, fd);	/* Possible read failure ^ */
-      READW (zndx, fd);
+      READSTR (&p->name, stream);	/* Possible read failure ^ */
+      READW (zndx, stream);
 
       if (pr)
 	{			/* not first instrument? */
@@ -2738,8 +2914,8 @@ load_ihdr (int size, SFData * sf, FILE * fd)
       pr = p;			/* update instrument ptr */
     }
 
-  FSKIP (20, fd);
-  READW (zndx, fd);
+  FSKIP (20, stream);
+  READW (zndx, stream);
 
   if (zndx < pzndx)
     return (gerr (ErrCorr, _("Instrument header indices not monotonic")));
@@ -2752,7 +2928,7 @@ load_ihdr (int size, SFData * sf, FILE * fd)
 
 /* instrument bag loader */
 static int
-load_ibag (int size, SFData * sf, FILE * fd)
+load_ibag (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   fluid_list_t *p, *p2;
   SFZone *z, *pz = NULL;
@@ -2774,8 +2950,8 @@ load_ibag (int size, SFData * sf, FILE * fd)
 	  p2->data = z;
 	  z->gen = NULL;	/* In case of failure, */
 	  z->mod = NULL;	/* sfont_close can clean up */
-	  READW (genndx, fd);	/* READW = possible read failure */
-	  READW (modndx, fd);
+	  READW (genndx, stream);	/* READW = possible read failure */
+	  READW (modndx, stream);
 	  z->instsamp = NULL;
 
 	  if (pz)
@@ -2805,8 +2981,8 @@ load_ibag (int size, SFData * sf, FILE * fd)
   if (size != 0)
     return (gerr (ErrCorr, _("Instrument chunk size mismatch")));
 
-  READW (genndx, fd);
-  READW (modndx, fd);
+  READW (genndx, stream);
+  READW (modndx, stream);
 
   if (!pz)
     {				/* in case that all are no zoners */
@@ -2835,7 +3011,7 @@ load_ibag (int size, SFData * sf, FILE * fd)
 
 /* instrument modulator loader */
 static int
-load_imod (int size, SFData * sf, FILE * fd)
+load_imod (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   fluid_list_t *p, *p2, *p3;
   SFMod *m;
@@ -2854,11 +3030,11 @@ load_imod (int size, SFData * sf, FILE * fd)
 		    _("Instrument modulator chunk size mismatch")));
 	      m = FLUID_NEW (SFMod);
 	      p3->data = m;
-	      READW (m->src, fd);
-	      READW (m->dest, fd);
-	      READW (m->amount, fd);
-	      READW (m->amtsrc, fd);
-	      READW (m->trans, fd);
+	      READW (m->src, stream);
+	      READW (m->dest, stream);
+	      READW (m->amount, stream);
+	      READW (m->amtsrc, stream);
+	      READW (m->trans, stream);
 	      p3 = fluid_list_next (p3);
 	    }
 	  p2 = fluid_list_next (p2);
@@ -2876,14 +3052,14 @@ load_imod (int size, SFData * sf, FILE * fd)
   size -= SFMODSIZE;
   if (size != 0)
     return (gerr (ErrCorr, _("Instrument modulator chunk size mismatch")));
-  FSKIP (SFMODSIZE, fd);	/* terminal mod */
+  FSKIP (SFMODSIZE, stream);	/* terminal mod */
 
   return (OK);
 }
 
 /* load instrument generators (see load_pgen for loading rules) */
 static int
-load_igen (int size, SFData * sf, FILE * fd)
+load_igen (int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   fluid_list_t *p, *p2, *p3, *dup, **hz = NULL;
   SFZone *z;
@@ -2913,15 +3089,15 @@ load_igen (int size, SFData * sf, FILE * fd)
 	      if ((size -= SFGENSIZE) < 0)
 		return (gerr (ErrCorr, _("IGEN chunk size mismatch")));
 
-	      READW (genid, fd);
+	      READW (genid, stream);
 
 	      if (genid == Gen_KeyRange)
 		{		/* nothing precedes */
 		  if (level == 0)
 		    {
 		      level = 1;
-		      READB (genval.range.lo, fd);
-		      READB (genval.range.hi, fd);
+		      READB (genval.range.lo, stream);
+		      READB (genval.range.hi, stream);
 		    }
 		  else
 		    skip = TRUE;
@@ -2931,8 +3107,8 @@ load_igen (int size, SFData * sf, FILE * fd)
 		  if (level <= 1)
 		    {
 		      level = 2;
-		      READB (genval.range.lo, fd);
-		      READB (genval.range.hi, fd);
+		      READB (genval.range.lo, stream);
+		      READB (genval.range.hi, stream);
 		    }
 		  else
 		    skip = TRUE;
@@ -2940,7 +3116,7 @@ load_igen (int size, SFData * sf, FILE * fd)
 	      else if (genid == Gen_SampleId)
 		{		/* sample is last gen */
 		  level = 3;
-		  READW (genval.uword, fd);
+		  READW (genval.uword, stream);
 		  ((SFZone *) (p2->data))->instsamp = GINT_TO_POINTER (genval.uword + 1);
 		  break;	/* break out of generator loop */
 		}
@@ -2949,7 +3125,7 @@ load_igen (int size, SFData * sf, FILE * fd)
 		  level = 2;
 		  if (gen_valid (genid))
 		    {		/* gen valid? */
-		      READW (genval.sword, fd);
+		      READW (genval.sword, stream);
 		      dup = gen_inlist (genid, z->gen);
 		    }
 		  else
@@ -2975,7 +3151,7 @@ load_igen (int size, SFData * sf, FILE * fd)
 		{		/* skip this generator */
 		  discarded = TRUE;
 		  drop = TRUE;
-		  FSKIPW (fd);
+		  FSKIPW (stream);
 		}
 
 	      if (!drop)
@@ -3020,7 +3196,7 @@ load_igen (int size, SFData * sf, FILE * fd)
 	      if ((size -= SFGENSIZE) < 0)
 		return (gerr (ErrCorr,
 		    _("Instrument generator chunk size mismatch")));
-	      FSKIP (SFGENSIZE, fd);
+	      FSKIP (SFGENSIZE, stream);
 	      SLADVREM (z->gen, p3);
 	    }
 
@@ -3040,14 +3216,14 @@ load_igen (int size, SFData * sf, FILE * fd)
   size -= SFGENSIZE;
   if (size != 0)
     return (gerr (ErrCorr, _("IGEN chunk size mismatch")));
-  FSKIP (SFGENSIZE, fd);	/* terminal gen */
+  FSKIP (SFGENSIZE, stream);	/* terminal gen */
 
   return (OK);
 }
 
 /* sample header loader */
 static int
-load_shdr (unsigned int size, SFData * sf, FILE * fd)
+load_shdr (unsigned int size, SFData * sf, fluid_stream_loader_t * stream)
 {
   unsigned int i;
   SFSample *p;
@@ -3059,7 +3235,7 @@ load_shdr (unsigned int size, SFData * sf, FILE * fd)
   if (size == 0)
     {				/* at least one sample + term record? */
       FLUID_LOG (FLUID_WARN, _("File contains no samples"));
-      FSKIP (SFSHDRSIZE, fd);
+      FSKIP (SFSHDRSIZE, stream);
       return (OK);
     }
 
@@ -3068,20 +3244,20 @@ load_shdr (unsigned int size, SFData * sf, FILE * fd)
     {
       p = FLUID_NEW (SFSample);
       sf->sample = fluid_list_append (sf->sample, p);
-      READSTR (&p->name, fd);
-      READD (p->start, fd);
-      READD (p->end, fd);	/* - end, loopstart and loopend */
-      READD (p->loopstart, fd);	/* - will be checked and turned into */
-      READD (p->loopend, fd);	/* - offsets in fixup_sample() */
-      READD (p->samplerate, fd);
-      READB (p->origpitch, fd);
-      READB (p->pitchadj, fd);
-      FSKIPW (fd);		/* skip sample link */
-      READW (p->sampletype, fd);
+      READSTR (&p->name, stream);
+      READD (p->start, stream);
+      READD (p->end, stream);	/* - end, loopstart and loopend */
+      READD (p->loopstart, stream);	/* - will be checked and turned into */
+      READD (p->loopend, stream);	/* - offsets in fixup_sample() */
+      READD (p->samplerate, stream);
+      READB (p->origpitch, stream);
+      READB (p->pitchadj, stream);
+      FSKIPW (stream);		/* skip sample link */
+      READW (p->sampletype, stream);
       p->samfile = 0;
     }
 
-  FSKIP (SFSHDRSIZE, fd);	/* skip terminal shdr */
+  FSKIP (SFSHDRSIZE, stream);	/* skip terminal shdr */
 
   return (OK);
 }

@@ -72,6 +72,59 @@ enum {
 
 
 /**
+ * Stream loader structure.
+ */
+struct _fluid_stream_loader_t {
+  void* data;
+
+  /**
+   * The free method should free the memory allocated for the loader in
+   * addition to any private data.
+   * @param loader SoundFont loader
+   * @return Should return 0 if no error occured, non-zero otherwise
+   */
+  int (*free)(fluid_stream_loader_t* loader);
+
+  /**
+   * The open method should open the specified file or any
+   * identifier as a stream, which can be a FILE or anything.
+   * @param loader SoundFont loader
+   * @param filename SoundFont filename (or any identifier) to load.
+   * @return Should return 0 if no error occured, non-zero otherwise
+   */
+  int (*open)(fluid_stream_loader_t* loader, const char* filename);
+
+  int (*close)(fluid_stream_loader_t* loader);
+
+  int (*is_open)(fluid_stream_loader_t* loader);
+
+  int (*length)(fluid_stream_loader_t* loader);
+
+  int (*position)(fluid_stream_loader_t* loader);
+
+  int (*safe_seek_by)(fluid_stream_loader_t* loader, int position);
+
+  int (*read)(fluid_stream_loader_t* loader, void* buffer, int size);
+
+  int (*safe_read)(fluid_stream_loader_t* loader, void* buffer, int size);
+
+  /**
+   * This is required to pass a FILE* to SFData...
+   * 
+   * @param loader SoundFont loader
+   * @return return FILE pointer, if used in the implementation.
+   */
+  FILE* (*get_sffd)(fluid_stream_loader_t* loader);
+
+  int (*get_modtime)(fluid_stream_loader_t * loader, char *filename, time_t *modification_time);
+};
+
+typedef struct _defsfloader_data_t {
+	fluid_settings_t* settings;
+	fluid_stream_loader_t* stream;
+} defsfloader_data_t;
+
+/**
  * SoundFont loader structure.
  */
 struct _fluid_sfloader_t {

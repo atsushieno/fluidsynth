@@ -37,6 +37,8 @@ typedef struct _fluid_hashtable_t fluid_settings_t;             /**< Configurati
 typedef struct _fluid_synth_t fluid_synth_t;                    /**< Synthesizer instance */
 typedef struct _fluid_synth_channel_info_t fluid_synth_channel_info_t;  /**< SoundFont channel info */
 typedef struct _fluid_voice_t fluid_voice_t;                    /**< Synthesis voice instance */
+typedef struct _fluid_stream_loader_t fluid_stream_loader_t;    /**< Stream loader */
+typedef struct _defsfloader_data_t defsfloader_data_t;    /**< Stream loader data */
 typedef struct _fluid_sfloader_t fluid_sfloader_t;              /**< SoundFont loader plugin */
 typedef struct _fluid_sfont_t fluid_sfont_t;                    /**< SoundFont */
 typedef struct _fluid_preset_t fluid_preset_t;                  /**< SoundFont preset */
