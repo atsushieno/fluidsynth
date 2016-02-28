@@ -119,11 +119,6 @@ struct _fluid_stream_loader_t {
   int (*get_modtime)(fluid_stream_loader_t * loader, char *filename, time_t *modification_time);
 };
 
-typedef struct _defsfloader_data_t {
-	fluid_settings_t* settings;
-	fluid_stream_loader_t* stream;
-} defsfloader_data_t;
-
 /**
  * SoundFont loader structure.
  */

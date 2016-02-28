@@ -552,6 +552,7 @@ fluid_synth_t*
 new_fluid_synth(fluid_settings_t *settings)
 {
   fluid_synth_t* synth;
+  fluid_stream_loader_t* stream;
   fluid_sfloader_t* loader;
   double gain;
   int i, nbuf;
@@ -679,7 +680,8 @@ new_fluid_synth(fluid_settings_t *settings)
 #endif
   
   /* allocate and add the default sfont loader */
-  loader = new_fluid_defsfloader(settings);
+  stream = new_fluid_file_stream_loader();
+  loader = new_fluid_defsfloader(settings, stream);
 
   if (loader == NULL) {
     FLUID_LOG(FLUID_WARN, "Failed to create the default SoundFont loader");
@@ -5051,3 +5053,14 @@ int fluid_synth_set_channel_type(fluid_synth_t* synth, int chan, int type)
   FLUID_API_RETURN(FLUID_OK);
 }
 
+
+/**
+ * Creates a new stream-based SoundFont loader
+ * @param synth FluidSynth instance
+ * @param stream Stream loader instance
+ * @return a new instance of SoundFont loader
+ */
+fluid_sfloader_t* fluid_synth_new_stream_sfloader(fluid_synth_t* synth, fluid_stream_loader_t* stream)
+{
+  return new_fluid_defsfloader(synth->settings, stream);
+}

@@ -199,23 +199,24 @@ fluid_stream_loader_t* new_fluid_file_stream_loader()
  *                           SFONT LOADER
  */
 
-fluid_sfloader_t* new_fluid_defsfloader(fluid_settings_t* settings)
+typedef struct _defsfloader_data_t {
+	fluid_settings_t* settings;
+	fluid_stream_loader_t* stream;
+} defsfloader_data_t;
+
+fluid_sfloader_t* new_fluid_defsfloader(fluid_settings_t* settings, fluid_stream_loader_t* stream)
 {
   fluid_sfloader_t* loader;
   defsfloader_data_t* data;
-  fluid_stream_loader_t* stream;
+  
+  if (stream == NULL) {
+    FLUID_LOG(FLUID_ERR, "Null stream loader");
+    return NULL;
+  }
     
   data = FLUID_NEW(defsfloader_data_t);
   if (data == NULL) {
     FLUID_LOG(FLUID_ERR, "Out of memory");
-    return NULL;
-  }
-  
-  stream = new_fluid_file_stream_loader();
-  if (stream == NULL) {
-    FLUID_LOG(FLUID_ERR, "Out of memory");
-    if (data)
-	  FLUID_FREE(data);
     return NULL;
   }
 
@@ -3604,3 +3605,4 @@ safe_fseek (FILE * fd, long ofs, int whence)
   }
   return (OK);
 }
+

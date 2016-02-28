@@ -298,6 +298,7 @@ typedef int (*fluid_audio_callback_t)(fluid_synth_t* synth, int len,
 
 /* Synthesizer's interface to handle SoundFont loaders */
 
+FLUIDSYNTH_API fluid_sfloader_t* fluid_synth_new_stream_sfloader(fluid_synth_t* synth, fluid_stream_loader_t* stream);
 FLUIDSYNTH_API void fluid_synth_add_sfloader(fluid_synth_t* synth, fluid_sfloader_t* loader);
 FLUIDSYNTH_API fluid_voice_t* fluid_synth_alloc_voice(fluid_synth_t* synth, fluid_sample_t* sample,
                                                       int channum, int key, int vel);
