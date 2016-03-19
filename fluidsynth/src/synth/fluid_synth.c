@@ -5064,3 +5064,17 @@ fluid_sfloader_t* fluid_synth_new_stream_sfloader(fluid_synth_t* synth, fluid_st
 {
   return new_fluid_defsfloader(synth->settings, stream);
 }
+
+/**
+ * Deletes a stream-based SoundFont loader
+ * @param loader an instance of SoundFont loader
+ */
+void fluid_synth_delete_stream_sfloader(fluid_sfloader_t* loader)
+{
+  delete_fluid_defsfloader(loader);
+}
+
+fluid_stream_loader_t* fluid_synth_new_asset_stream_loader(void* jniEnv, void* assetManager)
+{
+  return new_fluid_android_asset_stream_loader(jniEnv, assetManager);
+}

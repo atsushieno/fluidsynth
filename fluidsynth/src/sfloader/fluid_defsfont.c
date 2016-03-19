@@ -25,6 +25,10 @@
 #include "fluid_defsfont.h"
 /* Todo: Get rid of that 'include' */
 #include "fluid_sys.h"
+#if ANDROID
+#include "android/asset_manager.h"
+#include "android/asset_manager_jni.h"
+#endif
 
 
 /***************************************************************
@@ -37,7 +41,6 @@ int free_fluid_file_stream_loader(fluid_stream_loader_t* loader)
   if (loader) {
     FLUID_FREE(loader);
   }
-FLUID_LOG(FLUID_INFO, "STREAM freed successfully.");
   return FLUID_OK;
 }
 
@@ -192,6 +195,159 @@ fluid_stream_loader_t* new_fluid_file_stream_loader()
   loader->get_sffd = fluid_file_stream_loader_get_sffd;
   loader->get_modtime = fluid_get_file_modification_time;
 }
+
+
+/***************************************************************
+ *
+ *          ANDROID ASSET STREAM LOADER AND FILE LOADER
+ */
+
+#if ANDROID
+
+typedef struct _android_stream_loader_data_t {
+	AAssetManager* manager;
+	AAsset* asset;
+} android_stream_loader_data_t;
+
+#define ADATA(loader) ((android_stream_loader_data_t*) (loader->data))
+#define AMANAGER(loader) (ADATA(loader)->manager)
+#define ASSET(loader) (ADATA(loader)->asset)
+
+int free_fluid_android_asset_stream_loader(fluid_stream_loader_t* loader)
+{
+  if (loader) {
+    fluid_android_asset_stream_loader_close (loader);
+    if (loader->data) {
+      FLUID_FREE(loader->data);
+    }
+    FLUID_FREE(loader);
+  }
+  return FLUID_OK;
+}
+
+int fluid_android_asset_stream_loader_close(fluid_stream_loader_t* loader)
+{
+  if (ASSET(loader)) {
+    AAsset_close(ASSET(loader));
+  }
+  return FLUID_OK;
+}
+
+int fluid_android_asset_stream_loader_open(fluid_stream_loader_t* loader, const char* filename)
+{
+  android_stream_loader_data_t* data = (android_stream_loader_data_t*) loader->data;
+  if (data->asset) {
+    FLUID_LOG(FLUID_ERR, "Asset Stream is already open");
+    return -1;
+  }
+  data->asset = AAssetManager_open(AMANAGER(loader), filename, AASSET_MODE_UNKNOWN);
+  if (!data->asset) {
+    FLUID_LOG(FLUID_ERR, "Failed to open Asset Stream: %s", filename);
+    return -1;
+  }
+  return FLUID_OK;
+}
+
+int fluid_android_asset_stream_loader_is_open(fluid_stream_loader_t* loader)
+{
+  return ASSET(loader) ? 1 : 0;
+}
+
+int fluid_android_asset_stream_loader_length(fluid_stream_loader_t* loader)
+{
+  if (!ASSET(loader)) {
+    FLUID_LOG(FLUID_ERR, "Asset Stream is not open");
+    return -1;
+  }
+  return (int) AAsset_getLength(ASSET(loader));
+}
+
+int fluid_android_asset_stream_loader_position(fluid_stream_loader_t* loader)
+{
+  int ret;
+  if (!ASSET(loader)) {
+    FLUID_LOG(FLUID_ERR, "Asset Stream is not open");
+    return -1;
+  }
+  return AAsset_seek(ASSET(loader), 0, SEEK_CUR);
+}
+
+int fluid_android_asset_stream_loader_safe_seek_by(fluid_stream_loader_t* loader, int position)
+{
+  int ret;
+  if (!ASSET(loader)) {
+    FLUID_LOG(FLUID_ERR, "Asset Stream is not open");
+    return -1;
+  }
+  return AAsset_seek(ASSET(loader), position, SEEK_CUR);
+}
+
+int fluid_android_asset_stream_loader_safe_read(fluid_stream_loader_t* loader, void* buffer, int size)
+{
+  int ret;
+  if (!ASSET(loader)) {
+    FLUID_LOG(FLUID_ERR, "Asset Stream is not open");
+    return -1;
+  }
+  AAsset_read(ASSET(loader), buffer, size);
+  return OK;
+}
+
+int fluid_android_asset_stream_loader_read(fluid_stream_loader_t* loader, void* buffer, int size)
+{
+  int ret;
+  if (!loader->data) {
+    FLUID_LOG(FLUID_ERR, "Asset Stream is not open");
+    return -1;
+  }
+  return AAsset_read(ASSET(loader), buffer, size);
+}
+
+static int fluid_get_android_asset_modification_time(fluid_stream_loader_t * stream, char *filename, time_t *modification_time)
+{
+  *modification_time = 0;
+  return FLUID_OK;
+}
+
+fluid_stream_loader_t* new_fluid_android_asset_stream_loader(void* jniEnv, void* assetManager)
+{
+  fluid_stream_loader_t* loader;
+  android_stream_loader_data_t* data;
+
+  loader = FLUID_NEW(fluid_stream_loader_t);
+  if (loader == NULL) {
+    FLUID_LOG(FLUID_ERR, "Out of memory");
+    return NULL;
+  }
+  
+  data = FLUID_NEW(android_stream_loader_data_t);
+  if (data == NULL) {
+    FLUID_LOG(FLUID_ERR, "Out of memory");
+    FLUID_FREE(loader);
+    return NULL;
+  }
+  data->manager = AAssetManager_fromJava((JNIEnv*) jniEnv, (jobject) assetManager);
+  data->asset = NULL;
+
+  loader->data = data;
+  loader->free = free_fluid_android_asset_stream_loader;
+  loader->open = fluid_android_asset_stream_loader_open;
+  loader->is_open = fluid_android_asset_stream_loader_is_open;
+  loader->close = fluid_android_asset_stream_loader_close;
+  loader->length = fluid_android_asset_stream_loader_length;
+  loader->position = fluid_android_asset_stream_loader_position;
+  loader->safe_seek_by = fluid_android_asset_stream_loader_safe_seek_by;
+  loader->read = fluid_android_asset_stream_loader_read;
+  loader->safe_read = fluid_android_asset_stream_loader_safe_read;
+  loader->get_sffd = NULL;
+  loader->get_modtime = fluid_get_android_asset_modification_time;
+}
+
+#undef AMANAGER
+#undef ASSET
+#undef ADATA
+
+#endif
 
 
 /***************************************************************

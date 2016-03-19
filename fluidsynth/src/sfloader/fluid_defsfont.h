@@ -376,6 +376,10 @@ typedef struct _fluid_inst_zone_t fluid_inst_zone_t;
  */
 
 fluid_stream_loader_t* new_fluid_file_stream_loader();
+#if ANDROID
+fluid_stream_loader_t* new_fluid_android_asset_stream_loader(void* jniEnv, void* assetManager);
+void delete_fluid_android_asset_stream_loader(fluid_stream_loader_t* loader);
+#endif
 fluid_sfloader_t* new_fluid_defsfloader(fluid_settings_t* settings, fluid_stream_loader_t* stream);
 int delete_fluid_defsfloader(fluid_sfloader_t* loader);
 fluid_sfont_t* fluid_defsfloader_load(fluid_sfloader_t* loader, const char* filename);
