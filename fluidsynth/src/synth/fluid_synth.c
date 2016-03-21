@@ -3340,7 +3340,7 @@ fluid_synth_sfreload(fluid_synth_t* synth, unsigned int id)
     }
   }
 
-  FLUID_LOG(FLUID_ERR, "Failed to load SoundFont \"%s\"", filename);
+  FLUID_LOG(FLUID_ERR, "Failed to reload SoundFont \"%s\"", filename);
   FLUID_API_RETURN(FLUID_FAILED);  
 }
 

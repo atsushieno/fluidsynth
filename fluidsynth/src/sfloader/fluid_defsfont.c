@@ -48,6 +48,7 @@ int fluid_file_stream_loader_close(fluid_stream_loader_t* loader)
 {
   if (loader->data) {
     fclose((FILE*) loader->data);
+    loader->data = NULL;
   }
   return FLUID_OK;
 }
@@ -150,11 +151,6 @@ int fluid_file_stream_loader_read(fluid_stream_loader_t* loader, void* buffer, i
   return fread(buffer, 1, size, (FILE*) loader->data);
 }
 
-FILE* fluid_file_stream_loader_get_sffd(fluid_stream_loader_t* loader)
-{
-  return (FILE*) loader->data;
-}
-
 static int fluid_get_file_modification_time(fluid_stream_loader_t * stream, char *filename, time_t *modification_time)
 {
 #if defined(WIN32) || defined(__OS2__)
@@ -192,7 +188,6 @@ fluid_stream_loader_t* new_fluid_file_stream_loader()
   loader->safe_seek_by = fluid_file_stream_loader_safe_seek_by;
   loader->read = fluid_file_stream_loader_read;
   loader->safe_read = fluid_file_stream_loader_safe_read;
-  loader->get_sffd = fluid_file_stream_loader_get_sffd;
   loader->get_modtime = fluid_get_file_modification_time;
 }
 
@@ -227,8 +222,10 @@ int free_fluid_android_asset_stream_loader(fluid_stream_loader_t* loader)
 
 int fluid_android_asset_stream_loader_close(fluid_stream_loader_t* loader)
 {
+  android_stream_loader_data_t* data = (android_stream_loader_data_t*) loader->data;
   if (ASSET(loader)) {
     AAsset_close(ASSET(loader));
+    data->asset = NULL;
   }
   return FLUID_OK;
 }
@@ -339,7 +336,6 @@ fluid_stream_loader_t* new_fluid_android_asset_stream_loader(void* jniEnv, void*
   loader->safe_seek_by = fluid_android_asset_stream_loader_safe_seek_by;
   loader->read = fluid_android_asset_stream_loader_read;
   loader->safe_read = fluid_android_asset_stream_loader_safe_read;
-  loader->get_sffd = NULL;
   loader->get_modtime = fluid_get_android_asset_modification_time;
 }
 
@@ -945,12 +941,12 @@ int fluid_defsfont_load(fluid_defsfont_t* sfont, fluid_stream_loader_t* stream, 
     fluid_defsfont_add_preset(sfont, preset);
     p = fluid_list_next(p);
   }
-  sfont_close (sfdata);
+  sfont_close (sfdata, stream);
 
   return FLUID_OK;
 
 err_exit:
-  sfont_close (sfdata);
+  sfont_close (sfdata, stream);
   if (preset != NULL)
     delete_fluid_defpreset(preset);
   return FLUID_FAILED;
@@ -2357,7 +2353,6 @@ sfload_file (const char * fname, fluid_stream_loader_t * stream)
     {
       memset (sf, 0, sizeof (SFData));	/* zero sfdata */
       sf->fname = FLUID_STRDUP (fname);	/* copy file name */
-      sf->sffd = stream->get_sffd (stream);
     }
 
   /* get size of file */
@@ -2375,7 +2370,7 @@ sfload_file (const char * fname, fluid_stream_loader_t * stream)
   if (err)
     {
       if (sf)
-        sfont_close (sf);
+        sfont_close (sf, stream);
       return (NULL);
     }
 
@@ -3564,12 +3559,12 @@ unsigned short badpgen[] = { Gen_StartAddrOfs, Gen_EndAddrOfs, Gen_StartLoopAddr
 
 /* close SoundFont file and delete a SoundFont structure */
 void
-sfont_close (SFData * sf)
+sfont_close (SFData * sf, fluid_stream_loader_t* stream)
 {
   fluid_list_t *p, *p2;
 
-  if (sf->sffd)
-    fclose (sf->sffd);
+  if (stream)
+    stream->close (stream);
 
   if (sf->fname)
     free (sf->fname);

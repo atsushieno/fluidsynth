@@ -108,14 +108,6 @@ struct _fluid_stream_loader_t {
 
   int (*safe_read)(fluid_stream_loader_t* loader, void* buffer, int size);
 
-  /**
-   * This is required to pass a FILE* to SFData...
-   * 
-   * @param loader SoundFont loader
-   * @return return FILE pointer, if used in the implementation.
-   */
-  FILE* (*get_sffd)(fluid_stream_loader_t* loader);
-
   int (*get_modtime)(fluid_stream_loader_t * loader, char *filename, time_t *modification_time);
 };
 

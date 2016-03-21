@@ -136,7 +136,6 @@ typedef struct _SFPreset
 }
 SFPreset;
 
-/* NOTE: sffd is also used to determine if sound font is new (NULL) */
 typedef struct _SFData
 {				/* Sound font data structure */
   SFVersion version;		/* sound font version */
@@ -144,7 +143,7 @@ typedef struct _SFData
   unsigned int samplepos;		/* position within sffd of the sample chunk */
   unsigned int samplesize;		/* length within sffd of the sample chunk */
   char *fname;			/* file name */
-  FILE *sffd;			/* loaded sfont file descriptor */
+  FILE *sffd;			/* Deprecated: It used to point to the loaded sfont file descriptor, but to support arbitrary stream, this FILE* is gone. */
   fluid_list_t *info;		     /* linked list of info strings (1st byte is ID) */
   fluid_list_t *preset;		/* linked list of preset info */
   fluid_list_t *inst;			/* linked list of instrument info */
@@ -218,7 +217,7 @@ extern unsigned short badpgen[]; 	/* list of bad preset generators */
 /* functions */
 void sfont_init_chunks (void);
 
-void sfont_close (SFData * sf);
+void sfont_close (SFData * sf, fluid_stream_loader_t* stream);
 void sfont_free_zone (SFZone * zone);
 int sfont_preset_compare_func (void* a, void* b);
 
