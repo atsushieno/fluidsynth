@@ -189,6 +189,8 @@ fluid_stream_loader_t* new_fluid_file_stream_loader()
   loader->read = fluid_file_stream_loader_read;
   loader->safe_read = fluid_file_stream_loader_safe_read;
   loader->get_modtime = fluid_get_file_modification_time;
+
+  return loader;
 }
 
 
